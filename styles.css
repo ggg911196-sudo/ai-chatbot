@@ -675,3 +675,8 @@ html[data-theme="chatgpt"] .theme-pop{box-shadow:0 16px 48px rgba(0,0,0,.16)}
 .suggest-row:hover{background:var(--surface);color:var(--text)}
 .suggest-row .ic{font-size:22px;flex-shrink:0}
 .suggest-row .tx{line-height:1.9}
+
+/* v6.1: حباب کاربر خنثی در تم روشن + فیکس بصری */
+html[data-theme="chatgpt"] .msg.user .bubble{background:#ececec;border-color:transparent}
+html[data-theme="chatgpt"] .a-chip{background:#fff}
+html[data-theme="chatgpt"] .record-bar{background:#fff}

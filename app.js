@@ -552,16 +552,27 @@ async function runAssistant(c) {
   aborter = new AbortController();
   let full = '';
   let lastRender = 0;
+  let visionSkipped = false;
+  const doStream = (apiMessages) => streamChat(apiMessages, cfg, (tok) => {
+    full += tok;
+    const now = Date.now();
+    if (now - lastRender > 110) {
+      lastRender = now;
+      body.innerHTML = renderMarkdown(full) + '<span class="cursor"></span>';
+      messagesEl.scrollTop = messagesEl.scrollHeight;
+    }
+  }, aborter.signal);
+  const textOnlyMessages = () => c.messages.map((m) => ({ role: m.role, content: m.content }));
   try {
-    await streamChat(toApiMessages(c), cfg, (tok) => {
-      full += tok;
-      const now = Date.now();
-      if (now - lastRender > 110) {
-        lastRender = now;
-        body.innerHTML = renderMarkdown(full) + '<span class="cursor"></span>';
-        messagesEl.scrollTop = messagesEl.scrollHeight;
-      }
-    }, aborter.signal);
+    try {
+      await doStream(toApiMessages(c));
+    } catch (e) {
+      if (/content must be a string/i.test(e.message || '')) {
+        visionSkipped = true;
+        await doStream(textOnlyMessages());
+      } else throw e;
+    }
+    if (visionSkipped) full += '\n\n*⚠️ این مدل تصویر رو پشتیبانی نمی‌کنه؛ پیام بدون تصویر (فقط متن) فرستاده شد.*';
     c.messages.push({ role: 'assistant', content: full, provider: c.provider, model: cfg.model, rating: 0 });
     bumpStats(c.provider, 1);
     touchConvo(c);
