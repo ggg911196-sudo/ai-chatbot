@@ -38,6 +38,90 @@ const SUGGESTIONS = [
 ];
 const FOLLOWUPS = ['بیشتر توضیح بده', 'یه مثال عملی بزن', 'خلاصه‌اش کن'];
 
+/* تمیزکاری کلید: حذف کاراکترهای نامرئی (نیم‌فاصله، علامت جهت و…) که موقع کپی از متن فارسی ممکنه به اول/آخر کلید بچسبن و تشخیص رو خراب کنن */
+function cleanKey(k) { return (k || '').replace(/[\u200b-\u200f\u202a-\u202e\u2066-\u2069\ufeff]/g, '').trim(); }
+
+/* ظاهر هر ارائه‌دهنده: لوگوی واقعی + گرادیان اختصاصی */
+const PROVIDER_LOOK = {
+  openai:     { icon: 'openai',       g: ['#111111', '#3d3d3d'], letter: 'AI' },
+  gemini:     { icon: 'googlegemini', g: ['#1a73e8', '#9b72f2'], letter: 'G'  },
+  groq:       { icon: null,           g: ['#f55036', '#8f1d12'], letter: 'G'  },
+  cerebras:   { icon: null,           g: ['#e11d48', '#7f1d1d'], letter: 'C'  },
+  mistral:    { icon: 'mistralai',    g: ['#ff7000', '#c22e00'], letter: 'M'  },
+  together:   { icon: null,           g: ['#0f62fe', '#003a9e'], letter: 'T'  },
+  openrouter: { icon: 'openrouter',   g: ['#0ea5e9', '#4f46e5'], letter: 'OR' },
+  deepseek:   { icon: 'deepseek',     g: ['#4d6bfe', '#1e2f8f'], letter: 'DS' },
+  xai:        { icon: 'x',            g: ['#000000', '#3f3f46'], letter: '𝕏'  },
+  custom:     { icon: null,           g: ['#6b7280', '#374151'], letter: '✎'  },
+};
+function providerLogo(id) {
+  const L = PROVIDER_LOOK[id] || PROVIDER_LOOK.custom;
+  const s = document.createElement('span');
+  s.className = 'p-logo';
+  s.style.background = 'linear-gradient(135deg,' + L.g[0] + ',' + L.g[1] + ')';
+  s.title = (PROVIDER_PRESETS[id] || {}).label || id;
+  const putLetter = () => { const i = document.createElement('i'); i.textContent = L.letter; s.appendChild(i); };
+  if (L.icon) {
+    const img = document.createElement('img');
+    img.src = 'https://cdn.jsdelivr.net/npm/simple-icons/icons/' + L.icon + '.svg';
+    img.alt = ''; img.loading = 'lazy';
+    img.onerror = putLetter;
+    s.appendChild(img);
+  } else putLetter();
+  return s;
+}
+
+/* تم‌های رنگی */
+const THEMES = [
+  { id: 'midnight', name: 'نیمه‌شب', c: ['#8b5cf6', '#080a10'] },
+  { id: 'ocean',    name: 'اقیانوس',  c: ['#0ea5e9', '#04121f'] },
+  { id: 'sunset',   name: 'غروب',    c: ['#fb7185', '#160a12'] },
+  { id: 'forest',   name: 'جنگل',    c: ['#10b981', '#07120e'] },
+  { id: 'rose',     name: 'رز',      c: ['#ec4899', '#170811'] },
+  { id: 'light',    name: 'روشن',    c: ['#7c3aed', '#eef0f4'] },
+];
+const LS_THEME = 'aichat.theme.v1';
+function currentTheme() { try { return localStorage.getItem(LS_THEME) || 'midnight'; } catch { return 'midnight'; } }
+function setTheme(id) {
+  document.documentElement.dataset.theme = id;
+  try { localStorage.setItem(LS_THEME, id); } catch {}
+  renderThemePicker();
+}
+function renderThemePicker() {
+  const pop = $('theme-pop');
+  if (!pop) return;
+  pop.innerHTML = '';
+  const cur = currentTheme();
+  for (const t of THEMES) {
+    const b = document.createElement('button');
+    b.className = 'theme-opt' + (t.id === cur ? ' sel' : '');
+    const sw = document.createElement('span');
+    sw.className = 'theme-sw';
+    sw.style.setProperty('--t1', t.c[0]); sw.style.setProperty('--t2', t.c[1]);
+    const nm = document.createElement('span'); nm.textContent = t.name;
+    b.appendChild(sw); b.appendChild(nm);
+    b.onclick = (e) => { e.stopPropagation(); setTheme(t.id); };
+    pop.appendChild(b);
+  }
+}
+
+/* دریافت لیست مدل‌ها — برای جمینای از endpoint اصلی گوگل (نسخه سازگار OpenAI، ‎/models‎ ندارد) */
+async function probeModels(pid, base, key) {
+  if (pid === 'gemini') {
+    const res = await fetch('https://generativelanguage.googleapis.com/v1beta/models?key=' + encodeURIComponent(key));
+    if (!res.ok) throw new Error('خطای ' + res.status);
+    const data = await res.json();
+    return (data.models || [])
+      .map((m) => String(m.name || '').replace(/^models\//, ''))
+      .filter((id) => /gemini/i.test(id) && !/embed|tts|aqa|veo|imagen/i.test(id))
+      .sort();
+  }
+  const res = await fetch(base.replace(/\/+$/, '') + '/models', { headers: { 'Authorization': 'Bearer ' + key } });
+  if (!res.ok) throw new Error('خطای ' + res.status);
+  const data = await res.json();
+  return (data.data || []).map((m) => m.id).filter(Boolean).sort();
+}
+
 /* ---------- state ---------- */
 let settings = loadJSON(LS_SETTINGS, null) || defaultSettings();
 let convos = loadJSON(LS_CONVOS, []);
@@ -164,8 +248,13 @@ function renderSidebar() {
     }
   }
   const p = activeProviderCfg();
-  $('active-provider-chip').innerHTML = 'متصل به <b></b>';
-  $('active-provider-chip').querySelector('b').textContent = p.label;
+  const chipEl = $('active-provider-chip');
+  chipEl.innerHTML = '';
+  chipEl.appendChild(providerLogo(settings.activeProvider || 'openai'));
+  const ct = document.createElement('span');
+  ct.innerHTML = 'متصل به <b></b>';
+  ct.querySelector('b').textContent = p.label;
+  chipEl.appendChild(ct);
   $('btn-admin').textContent = isAdmin() ? '🛡 پنل مدیر' : '🔐 ورود مدیر';
   $('admin-badge').classList.toggle('hidden', !isAdmin());
   renderMsLabel();
@@ -291,7 +380,11 @@ function renderSuggestions() {
   for (const id of visibleProviders()) {
     if (id === 'custom') continue;
     const s = document.createElement('span');
-    s.textContent = settings.providers[id].label;
+    s.className = 'wp-chip';
+    s.appendChild(providerLogo(id));
+    const t = document.createElement('span');
+    t.textContent = settings.providers[id].label;
+    s.appendChild(t);
     wp.appendChild(s);
   }
 }
@@ -425,7 +518,9 @@ function stopStream() { if (aborter) aborter.abort(); }
 /* ---------- سوییچر مدل (سبک LobeChat) ---------- */
 function renderMsLabel() {
   const p = activeProviderCfg();
+  const pid = settings.activeProvider || 'openai';
   $('ms-label').innerHTML = '';
+  $('ms-label').appendChild(providerLogo(pid));
   const b = document.createElement('b');
   b.textContent = p.label;
   const s = document.createElement('span');
@@ -445,7 +540,10 @@ function openModelMenu() {
     g.className = 'mm-group';
     const h = document.createElement('div');
     h.className = 'mm-provider';
-    h.textContent = (p.apiKey ? '' : '🔑 ') + p.label;
+    h.appendChild(providerLogo(id));
+    const ht = document.createElement('span');
+    ht.textContent = (p.apiKey ? '' : '🔑 ') + p.label;
+    h.appendChild(ht);
     g.appendChild(h);
     const models = providerModels(id);
     if (!models.length) {
@@ -489,7 +587,11 @@ function fillProviderTabs() {
   tabs.innerHTML = '';
   for (const id of visibleProviders()) {
     const b = document.createElement('button');
-    b.textContent = settings.providers[id].label;
+    b.className = 'ptab';
+    b.appendChild(providerLogo(id));
+    const t = document.createElement('span');
+    t.textContent = settings.providers[id].label;
+    b.appendChild(t);
     if (id === editingProvider) b.classList.add('active');
     b.onclick = () => { editingProvider = id; fillProviderTabs(); fillSettingsForm(); };
     tabs.appendChild(b);
@@ -527,7 +629,7 @@ function showTest(msg, ok) {
 function hideTest() { $('test-result').classList.add('hidden'); }
 
 async function testConnection() {
-  const cfg = { label: $('set-name').value.trim(), baseUrl: $('set-baseurl').value.trim(), apiKey: $('set-key').value.trim(), model: $('set-model').value.trim() };
+  const cfg = { label: $('set-name').value.trim(), baseUrl: $('set-baseurl').value.trim(), apiKey: cleanKey($('set-key').value), model: $('set-model').value.trim() };
   if (!cfg.apiKey) { showTest('کلید API رو وارد کن.', false); return; }
   if (!cfg.baseUrl) { showTest('آدرس پایه (Base URL) رو وارد کن.', false); return; }
   if (!cfg.model) { showTest('نام مدل رو وارد کن.', false); return; }
@@ -549,15 +651,11 @@ async function testConnection() {
 
 async function fetchModels() {
   const baseUrl = $('set-baseurl').value.trim();
-  const apiKey = $('set-key').value.trim();
+  const apiKey = cleanKey($('set-key').value);
   if (!apiKey) { showTest('اول کلید API رو وارد کن.', false); return; }
   showTest('⏳ در حال دریافت مدل‌ها…', true);
   try {
-    const base = baseUrl.replace(/\/+$/, '');
-    const res = await fetch(base + '/models', { headers: { 'Authorization': 'Bearer ' + apiKey } });
-    if (!res.ok) throw new Error('خطای ' + res.status);
-    const data = await res.json();
-    const ids = (data.data || []).map((m) => m.id).filter(Boolean).sort();
+    const ids = await probeModels(editingProvider, baseUrl, apiKey);
     if (!ids.length) { showTest('لیست مدل‌ها خالی برگشت.', false); return; }
     settings.providers[editingProvider].modelsList = ids;
     saveSettings();
@@ -571,7 +669,7 @@ async function fetchModels() {
 
 /* اتصال هوشمند */
 async function smartConnect() {
-  const key = $('smart-key').value.trim();
+  const key = cleanKey($('smart-key').value);
   const box = $('smart-result');
   box.className = 'test-result err'; box.classList.remove('hidden');
   if (!key || key.length < 8) { box.textContent = 'اول کلید API رو بچسبون.'; return; }
@@ -594,17 +692,12 @@ async function smartConnect() {
     saveSettings();
     let modelCount = 0, chosen = p.model;
     try {
-      const base = p.baseUrl.replace(/\/+$/, '');
-      const res = await fetch(base + '/models', { headers: { 'Authorization': 'Bearer ' + key } });
-      if (res.ok) {
-        const data = await res.json();
-        const ids = (data.data || []).map((m) => m.id).filter(Boolean).sort();
-        if (ids.length) {
-          p.modelsList = ids; modelCount = ids.length;
-          const preset = PROVIDER_PRESETS[pid].models[0];
-          chosen = ids.includes(preset) ? preset : ids.find((m) => /flash|mini|small/i.test(m)) || ids[0];
-          p.model = chosen;
-        }
+      const ids = await probeModels(pid, p.baseUrl, key);
+      if (ids.length) {
+        p.modelsList = ids; modelCount = ids.length;
+        const preset = PROVIDER_PRESETS[pid].models[0];
+        chosen = ids.includes(preset) ? preset : ids.find((m) => /flash|mini|small/i.test(m)) || ids[0];
+        p.model = chosen;
       }
     } catch {}
     if (!p.model && providerModels(pid).length) p.model = providerModels(pid)[0];
@@ -621,7 +714,7 @@ function saveProviderSettings() {
   const p = settings.providers[editingProvider];
   p.label = $('set-name').value.trim() || PROVIDER_PRESETS[editingProvider].label;
   p.baseUrl = $('set-baseurl').value.trim();
-  p.apiKey = $('set-key').value.trim();
+  p.apiKey = cleanKey($('set-key').value);
   p.model = $('set-model').value.trim();
   saveSettings();
   fillProviderTabs(); fillSettingsForm(); renderAll();
@@ -919,6 +1012,13 @@ document.addEventListener('keydown', (e) => {
 });
 
 /* ---------- init ---------- */
+document.documentElement.dataset.theme = currentTheme();
+renderThemePicker();
+$('btn-theme').onclick = (e) => { e.stopPropagation(); renderThemePicker(); $('theme-pop').classList.toggle('hidden'); };
+document.addEventListener('click', (e) => {
+  const pop = $('theme-pop');
+  if (pop && !pop.classList.contains('hidden') && !e.target.closest('.theme-wrap')) pop.classList.add('hidden');
+});
 if (!visibleProviders().includes(settings.activeProvider)) settings.activeProvider = 'openai';
 renderAll();
 autoresize();

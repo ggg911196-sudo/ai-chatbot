@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>چت‌بات هوش مصنوعی</title>
+<script>try{document.documentElement.dataset.theme=localStorage.getItem('aichat.theme.v1')||'midnight'}catch(e){document.documentElement.dataset.theme='midnight'}</script>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>✦</text></svg>">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/Vazirmatn-font-face.css">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/styles/github-dark.min.css">
@@ -26,6 +27,10 @@
     <div class="sidebar-foot">
       <button id="btn-settings" class="foot-btn">⚙️ تنظیمات API</button>
       <button id="btn-admin" class="foot-btn">🔐 ورود مدیر</button>
+      <div class="theme-wrap">
+        <button id="btn-theme" class="foot-btn">🎨 تم رنگی</button>
+        <div id="theme-pop" class="theme-pop hidden"></div>
+      </div>
       <div class="provider-chip" id="active-provider-chip"></div>
     </div>
   </aside>
@@ -77,12 +82,13 @@
     <div class="modal-body">
       <div class="smart-box">
         <div class="smart-title">⚡ اتصال هوشمند</div>
-        <p class="smart-desc">کلید API رو اینجا بچسبون؛ خودش ارائه‌دهنده و مدل‌ها رو تشخیص می‌ده.</p>
+        <p class="smart-desc">کلید API رو اینجا بچسبون؛ ارائه‌دهنده رو خودش تشخیص می‌ده. ورود کلید کاملاً با خودته — فقط در مرورگرت ذخیره می‌شه.</p>
         <div class="key-row">
           <input type="text" id="smart-key" dir="ltr" placeholder="کلید API رو اینجا بچسبون…">
           <button id="btn-smart" class="btn-primary small">تشخیص</button>
         </div>
         <div id="smart-result" class="test-result hidden"></div>
+        <p class="privacy-note">🔒 کلید تو فقط در همین مرورگر ذخیره می‌شود و به هیچ‌جا ارسال نمی‌شود، جز به ارائه‌دهنده‌ای که خودت انتخاب می‌کنی.</p>
       </div>
       <details class="free-guide">
         <summary>🎁 ۶ API رایگان و قوی (بدون کارت بانکی)</summary>

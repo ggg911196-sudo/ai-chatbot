@@ -5,19 +5,67 @@
   --text:#edf0f7; --muted:#9aa3b8; --muted2:#626c84;
   --accent:#8b5cf6; --accent2:#22d3ee;
   --accent-grad:linear-gradient(135deg,#8b5cf6,#22d3ee);
+  --accent-soft:rgba(139,92,246,.25);
+  --accent-tint:rgba(139,92,246,.12); --accent2-tint:rgba(34,211,238,.1);
+  --glow1:rgba(139,92,246,.14); --glow2:rgba(34,211,238,.08);
   --danger:#fb7185; --ok:#34d399; --warn:#fbbf24;
   --radius:16px;
+}
+/* تم‌ها — هر تم فقط متغیرها را بازنویسی می‌کند */
+[data-theme="ocean"]{
+  --bg:#04121f; --bg2:#071c2e; --surface:#0a2438; --surface2:#0e2f47;
+  --accent:#0ea5e9; --accent2:#22d3ee;
+  --accent-grad:linear-gradient(135deg,#0ea5e9,#22d3ee);
+  --accent-soft:rgba(14,165,233,.25);
+  --accent-tint:rgba(14,165,233,.12); --accent2-tint:rgba(34,211,238,.1);
+  --glow1:rgba(14,165,233,.16); --glow2:rgba(34,211,238,.08);
+}
+[data-theme="sunset"]{
+  --bg:#160a12; --bg2:#200d18; --surface:#2a1220; --surface2:#381a29;
+  --accent:#fb7185; --accent2:#fbbf24;
+  --accent-grad:linear-gradient(135deg,#fb7185,#f59e0b);
+  --accent-soft:rgba(251,113,133,.25);
+  --accent-tint:rgba(251,113,133,.12); --accent2-tint:rgba(251,191,36,.08);
+  --glow1:rgba(251,113,133,.15); --glow2:rgba(251,191,36,.07);
+}
+[data-theme="forest"]{
+  --bg:#07120e; --bg2:#0a1d15; --surface:#0e271d; --surface2:#143327;
+  --accent:#10b981; --accent2:#a3e635;
+  --accent-grad:linear-gradient(135deg,#10b981,#84cc16);
+  --accent-soft:rgba(16,185,129,.25);
+  --accent-tint:rgba(16,185,129,.12); --accent2-tint:rgba(163,230,53,.07);
+  --glow1:rgba(16,185,129,.15); --glow2:rgba(163,230,53,.06);
+}
+[data-theme="rose"]{
+  --bg:#170811; --bg2:#220c18; --surface:#2c1020; --surface2:#3d162c;
+  --accent:#ec4899; --accent2:#a855f7;
+  --accent-grad:linear-gradient(135deg,#ec4899,#a855f7);
+  --accent-soft:rgba(236,72,153,.25);
+  --accent-tint:rgba(236,72,153,.12); --accent2-tint:rgba(168,85,247,.1);
+  --glow1:rgba(236,72,153,.16); --glow2:rgba(168,85,247,.08);
+}
+[data-theme="light"]{
+  --bg:#eef0f4; --bg2:#ffffff; --surface:#ffffff; --surface2:#e9edf3;
+  --border:rgba(15,20,35,.1); --border-soft:rgba(15,20,35,.06);
+  --text:#181b22; --muted:#5b6472; --muted2:#9aa1ad;
+  --accent:#7c3aed; --accent2:#0891b2;
+  --accent-grad:linear-gradient(135deg,#7c3aed,#0891b2);
+  --accent-soft:rgba(124,58,237,.18);
+  --accent-tint:rgba(124,58,237,.09); --accent2-tint:rgba(8,145,178,.08);
+  --glow1:rgba(124,58,237,.09); --glow2:rgba(8,145,178,.07);
+  --danger:#e11d48; --ok:#059669; --warn:#d97706;
 }
 *{box-sizing:border-box;margin:0;padding:0}
 html,body{height:100%}
 body{
   font-family:'Vazirmatn',system-ui,sans-serif;
   background:
-    radial-gradient(900px 500px at 85% -10%,rgba(139,92,246,.14),transparent 60%),
-    radial-gradient(700px 500px at 10% 110%,rgba(34,211,238,.08),transparent 60%),
+    radial-gradient(900px 500px at 85% -10%,var(--glow1),transparent 60%),
+    radial-gradient(700px 500px at 10% 110%,var(--glow2),transparent 60%),
     var(--bg);
   color:var(--text); overflow:hidden;
   -webkit-font-smoothing:antialiased;
+  transition:background-color .4s ease,color .4s ease;
 }
 #app{display:flex;height:100vh}
 .hidden{display:none!important}
@@ -36,7 +84,7 @@ button{font-family:inherit}
   padding:12px;border-radius:14px;cursor:pointer;font-size:14px;font-weight:700;
   transition:border-color .2s,box-shadow .2s,transform .15s;
 }
-.btn-new:hover{border-color:var(--accent);box-shadow:0 4px 20px rgba(139,92,246,.25);transform:translateY(-1px)}
+.btn-new:hover{border-color:var(--accent);box-shadow:0 4px 20px var(--accent-soft);transform:translateY(-1px)}
 .btn-new .spark{background:var(--accent-grad);-webkit-background-clip:text;background-clip:text;color:transparent;font-size:18px}
 .search-wrap{position:relative}
 .search-wrap input{
@@ -91,7 +139,7 @@ button{font-family:inherit}
   padding:12px 20px;min-height:60px;
 }
 .badge{
-  background:rgba(139,92,246,.13);border:1px solid rgba(139,92,246,.35);color:#c4b5fd;
+  background:var(--accent-tint);border:1px solid var(--accent-soft);color:var(--accent);
   padding:3px 11px;border-radius:20px;font-size:11.5px;font-weight:700;white-space:nowrap;
 }
 .badge.admin{position:absolute;inset-inline-start:18px}
@@ -136,8 +184,8 @@ button{font-family:inherit}
 
 .msg.user{align-items:flex-end}
 .msg.user .bubble{
-  background:linear-gradient(135deg,rgba(139,92,246,.22),rgba(34,211,238,.14));
-  border:1px solid rgba(139,92,246,.25);
+  background:linear-gradient(135deg,var(--accent-tint),var(--accent2-tint));
+  border:1px solid var(--accent-soft);
   color:var(--text);padding:12px 18px;border-radius:20px 20px 6px 20px;
   max-width:88%;font-size:14.5px;line-height:2;white-space:pre-wrap;word-break:break-word;
 }
@@ -159,8 +207,8 @@ button{font-family:inherit}
 .answer-body h1,.answer-body h2,.answer-body h3{margin:18px 0 10px;font-size:16.5px;font-weight:800}
 .answer-body h1{font-size:19px}
 .answer-body code{
-  font-family:ui-monospace,SFMono-Regular,Menlo,monospace;background:rgba(139,92,246,.13);
-  border:1px solid rgba(139,92,246,.22);padding:2px 8px;border-radius:7px;font-size:13px;
+  font-family:ui-monospace,SFMono-Regular,Menlo,monospace;background:var(--accent-tint);
+  border:1px solid var(--accent-tint);padding:2px 8px;border-radius:7px;font-size:13px;
   direction:ltr;display:inline-block;color:#d8b4fe;
 }
 .answer-body pre{
@@ -173,7 +221,7 @@ button{font-family:inherit}
 .answer-body th,.answer-body td{border:1px solid var(--border);padding:9px 14px;white-space:nowrap}
 .answer-body th{background:var(--surface2);font-weight:800}
 .answer-body blockquote{
-  border-inline-start:3px solid var(--accent);background:rgba(139,92,246,.06);
+  border-inline-start:3px solid var(--accent);background:var(--accent-tint);
   padding:8px 14px;color:var(--muted);margin:12px 0;border-radius:0 10px 10px 0;
 }
 .answer-body a{color:var(--accent2);text-decoration:none;border-bottom:1px dashed rgba(34,211,238,.5)}
@@ -198,13 +246,13 @@ button{font-family:inherit}
   background:var(--surface);border:1px solid var(--border);color:var(--muted);
   font-size:12.5px;padding:8px 15px;border-radius:20px;cursor:pointer;transition:all .18s;
 }
-.fu-chip:hover{border-color:var(--accent);color:var(--text);transform:translateY(-1px);box-shadow:0 4px 14px rgba(139,92,246,.2)}
+.fu-chip:hover{border-color:var(--accent);color:var(--text);transform:translateY(-1px);box-shadow:0 4px 14px var(--accent-soft)}
 
 /* ============ صفحه خوش‌آمد ============ */
 .welcome{max-width:680px;margin:auto;text-align:center;padding:24px 20px;animation:fadeUp .45s ease;width:100%}
 .welcome-mark{
   font-size:56px;background:var(--accent-grad);-webkit-background-clip:text;background-clip:text;
-  color:transparent;margin-bottom:6px;filter:drop-shadow(0 4px 20px rgba(139,92,246,.4));
+  color:transparent;margin-bottom:6px;filter:drop-shadow(0 4px 20px var(--accent-soft));
 }
 .welcome h2{font-size:27px;font-weight:800;margin-bottom:6px}
 .welcome-sub{color:var(--muted);font-size:15px;margin-bottom:26px}
@@ -213,7 +261,7 @@ button{font-family:inherit}
   background:var(--surface);border:1px solid var(--border-soft);border-radius:15px;
   padding:15px 16px;cursor:pointer;transition:all .2s;display:flex;flex-direction:column;gap:6px;
 }
-.suggest-card:hover{border-color:rgba(139,92,246,.5);transform:translateY(-2px);box-shadow:0 8px 26px rgba(139,92,246,.18)}
+.suggest-card:hover{border-color:var(--accent-soft);transform:translateY(-2px);box-shadow:0 8px 26px var(--accent-soft)}
 .suggest-card .ic{font-size:20px}
 .suggest-card .tx{font-size:13px;color:var(--muted);line-height:1.9}
 .suggest-card:hover .tx{color:var(--text)}
@@ -235,7 +283,7 @@ button{font-family:inherit}
   transition:border-color .2s,box-shadow .25s;
   box-shadow:0 8px 32px rgba(0,0,0,.35);
 }
-.composer:focus-within{border-color:rgba(139,92,246,.55);box-shadow:0 8px 32px rgba(139,92,246,.18)}
+.composer:focus-within{border-color:var(--accent-soft);box-shadow:0 8px 32px var(--accent-soft)}
 #input{
   flex:1;background:none;border:none;outline:none;color:var(--text);font-family:inherit;
   font-size:15px;resize:none;max-height:170px;line-height:1.9;padding:10px 8px;min-width:0;
@@ -244,7 +292,7 @@ button{font-family:inherit}
 .btn-send{
   width:40px;height:40px;border-radius:50%;border:none;cursor:pointer;flex-shrink:0;
   background:var(--accent-grad);color:#fff;font-size:16px;transform:rotate(180deg);
-  transition:transform .15s,box-shadow .2s,opacity .2s;box-shadow:0 4px 16px rgba(139,92,246,.45);
+  transition:transform .15s,box-shadow .2s,opacity .2s;box-shadow:0 4px 16px var(--accent-soft);
   display:flex;align-items:center;justify-content:center;
 }
 .btn-send:hover{transform:rotate(180deg) scale(1.08)}
@@ -285,7 +333,7 @@ button{font-family:inherit}
 .provider-tabs button:hover{color:var(--text);border-color:var(--border)}
 .provider-tabs button.active{
   background:var(--accent-grad);color:#fff;border-color:transparent;font-weight:700;
-  box-shadow:0 4px 16px rgba(139,92,246,.4);
+  box-shadow:0 4px 16px var(--accent-soft);
 }
 .modal-body{padding:18px 22px 24px;display:flex;flex-direction:column;gap:15px}
 .modal-body label{font-size:13px;color:var(--muted);display:flex;flex-direction:column;gap:7px;font-weight:700}
@@ -294,7 +342,7 @@ button{font-family:inherit}
   padding:12px 14px;font-family:inherit;font-size:13.5px;outline:none;width:100%;font-weight:400;
   transition:border-color .2s,box-shadow .2s;
 }
-.modal-body input:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(139,92,246,.16)}
+.modal-body input:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
 .key-row{display:flex;gap:8px}
 .key-row input{flex:1;min-width:0}
 .model-row{display:flex;gap:8px}
@@ -304,9 +352,9 @@ button{font-family:inherit}
 .btn-primary{
   background:var(--accent-grad);border:none;color:#fff;font-family:inherit;font-weight:700;
   padding:12px 16px;border-radius:12px;cursor:pointer;font-size:14px;
-  transition:transform .15s,box-shadow .2s;box-shadow:0 4px 18px rgba(139,92,246,.35);
+  transition:transform .15s,box-shadow .2s;box-shadow:0 4px 18px var(--accent-soft);
 }
-.btn-primary:hover{transform:translateY(-1px);box-shadow:0 7px 26px rgba(139,92,246,.5)}
+.btn-primary:hover{transform:translateY(-1px);box-shadow:0 7px 26px var(--accent-soft)}
 .btn-primary:disabled{opacity:.55;cursor:wait;transform:none}
 .btn-primary.small{font-size:12.5px;padding:10px 14px;white-space:nowrap}
 .btn-ghost{
@@ -322,8 +370,8 @@ button{font-family:inherit}
 
 /* اتصال هوشمند */
 .smart-box{
-  background:linear-gradient(135deg,rgba(139,92,246,.13),rgba(34,211,238,.07));
-  border:1px solid rgba(139,92,246,.35);border-radius:var(--radius);padding:16px;
+  background:linear-gradient(135deg,var(--accent-tint),var(--accent2-tint));
+  border:1px solid var(--accent-soft);border-radius:var(--radius);padding:16px;
 }
 .smart-title{font-weight:800;font-size:14.5px;margin-bottom:4px}
 .smart-desc{font-size:12.5px;color:var(--muted);line-height:1.9;margin-bottom:11px;font-weight:400}
@@ -398,3 +446,103 @@ button{font-family:inherit}
   .suggest-grid{grid-template-columns:1fr}
   .msg.user .bubble{max-width:94%}
 }
+
+/* ============ انیمیشن‌های نسخه ۴ ============ */
+@keyframes popIn{from{opacity:0;transform:scale(.96) translateY(8px)}to{opacity:1;transform:none}}
+@keyframes msgIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+@keyframes gradShift{0%,100%{background-position:0% 50%}50%{background-position:100% 50%}}
+@keyframes pulseSoft{0%,100%{transform:scale(1)}50%{transform:scale(1.08)}}
+@keyframes logoIn{from{opacity:0;transform:scale(.6)}to{opacity:1;transform:scale(1)}}
+
+.message{animation:msgIn .3s ease}
+.suggest-card{animation:fadeUp .45s ease both}
+.suggest-card:nth-child(2){animation-delay:.07s}
+.suggest-card:nth-child(3){animation-delay:.14s}
+.suggest-card:nth-child(4){animation-delay:.21s}
+.modal-card{animation:popIn .25s ease}
+.welcome-mark{
+  background:var(--accent-grad);background-size:220% 220%;
+  animation:gradShift 7s ease infinite;
+}
+.btn-stop{animation:pulseSoft 1.4s ease infinite}
+.icon-btn{transition:transform .15s,color .15s,background .15s}
+.icon-btn:hover{transform:translateY(-1px)}
+.btn-primary:active,.btn-send:active{transform:scale(.94)}
+.fu-chip{transition:transform .15s,border-color .2s,color .2s,box-shadow .2s}
+
+/* گذار نرم هنگام عوض شدن تم */
+#sidebar,#main,.message .bubble,.modal-card,.composer,.convo,.foot-btn,.model-switcher{
+  transition-property:background-color,border-color,color,box-shadow;
+  transition-duration:.35s;
+}
+
+/* ============ لوگوی ارائه‌دهنده ============ */
+.p-logo{
+  width:26px;height:26px;min-width:26px;border-radius:8px;
+  display:inline-grid;place-items:center;overflow:hidden;flex-shrink:0;
+  box-shadow:0 2px 10px rgba(0,0,0,.35),inset 0 1px 0 rgba(255,255,255,.18);
+  animation:logoIn .3s ease;
+}
+.p-logo i{font-style:normal;font-size:11px;font-weight:800;color:#fff;line-height:1;letter-spacing:-.5px}
+.p-logo img{width:62%;height:62%;filter:brightness(0) invert(1)}
+#ms-label .p-logo{width:22px;height:22px;min-width:22px;border-radius:7px}
+#ms-label{display:inline-flex;align-items:center;gap:7px}
+.provider-chip .p-logo{width:20px;height:20px;min-width:20px;border-radius:6px}
+.provider-chip{display:inline-flex;align-items:center;gap:7px}
+
+/* ============ انتخاب تم ============ */
+.theme-wrap{position:relative}
+#btn-theme{width:100%}
+.theme-pop{
+  position:absolute;bottom:calc(100% + 10px);inset-inline-start:0;
+  background:var(--surface2);border:1px solid var(--border);border-radius:16px;
+  padding:12px;display:grid;grid-template-columns:repeat(3,1fr);gap:6px;z-index:60;
+  box-shadow:0 16px 48px rgba(0,0,0,.5);width:216px;animation:popIn .2s ease;
+}
+.theme-opt{
+  display:flex;flex-direction:column;align-items:center;gap:6px;padding:9px 4px;
+  border-radius:11px;border:1.5px solid transparent;background:none;color:var(--muted);
+  font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;
+  transition:background .15s,border-color .15s,transform .15s;
+}
+.theme-opt:hover{background:var(--surface);transform:translateY(-1px)}
+.theme-opt.sel{border-color:var(--accent);color:var(--text)}
+.theme-sw{
+  width:32px;height:32px;border-radius:50%;
+  background:linear-gradient(135deg,var(--t1),var(--t2));
+  border:2px solid rgba(255,255,255,.18);
+  box-shadow:0 3px 10px rgba(0,0,0,.3);
+}
+
+/* ============ یادداشت حریم خصوصی ============ */
+.privacy-note{
+  font-size:12px;color:var(--muted);background:rgba(52,211,153,.07);
+  border:1px solid rgba(52,211,153,.22);border-radius:10px;
+  padding:9px 11px;margin-top:10px;line-height:1.9;
+}
+
+/* چیپ‌های ارائه‌دهنده در خوش‌آمد با لوگو */
+.wp-chip{display:inline-flex;align-items:center;gap:7px}
+.wp-chip .p-logo{width:20px;height:20px;min-width:20px;border-radius:6px}
+
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation:none!important;transition:none!important}
+}
+
+/* تراز لوگو + متن در تب‌ها و منوی مدل */
+.provider-tabs button.ptab{display:inline-flex;align-items:center;gap:8px}
+.mm-provider{display:flex;align-items:center;gap:8px}
+.welcome-providers{display:flex;flex-wrap:wrap;gap:8px;justify-content:center}
+.welcome-providers .wp-chip{
+  background:var(--surface);border:1px solid var(--border-soft);border-radius:20px;
+  padding:6px 13px;font-size:12px;color:var(--muted);
+  animation:fadeUp .45s ease both;
+}
+.welcome-providers .wp-chip:nth-child(2){animation-delay:.05s}
+.welcome-providers .wp-chip:nth-child(3){animation-delay:.1s}
+.welcome-providers .wp-chip:nth-child(4){animation-delay:.15s}
+.welcome-providers .wp-chip:nth-child(5){animation-delay:.2s}
+.welcome-providers .wp-chip:nth-child(6){animation-delay:.25s}
+.welcome-providers .wp-chip:nth-child(7){animation-delay:.3s}
+.welcome-providers .wp-chip:nth-child(8){animation-delay:.35s}
+.welcome-providers .wp-chip:nth-child(9){animation-delay:.4s}
