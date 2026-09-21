@@ -4,13 +4,18 @@
 
 ## ✨ امکانات
 
-- اتصال به چند API: **OpenAI**، **OpenRouter**، **Groq**، **DeepSeek**، **xAI (Grok)** + گزینه‌ی **سفارشی** برای هر سرویس OpenAI-Compatible دیگه
-- ذخیره‌ی جداگانه‌ی کلید API برای هر ارائه‌دهنده (فقط توی مرورگر خودت، با localStorage)
-- دکمه‌ی **تست اتصال** و **دریافت لیست مدل‌ها** از API
+- اتصال به چند API: **OpenAI**، **Google Gemini**، **Groq**، **Cerebras**، **Mistral**، **Together AI**، **OpenRouter**، **DeepSeek**، **xAI (Grok)** + گزینه‌ی **سفارشی** برای هر سرویس OpenAI-Compatible دیگه
+- ⚡ **اتصال هوشمند**: کلید API رو بچسبون؛ ارائه‌دهنده و مدل‌ها خودش تشخیص داده می‌شن
+- 🎛 **سوییچر مدل** بالای صفحه: جابه‌جایی سریع بین ارائه‌دهنده‌ها و مدل‌ها بدون باز کردن تنظیمات
 - پاسخ **استریمینگ** (زنده) با دکمه‌ی توقف
-- رندر **مارک‌داون** + هایلایت کد
-- سایدبار گفتگوها: ساخت، تغییرنام خودکار، حذف
-- رابط فارسی راست‌چین با فونت وزیرمتن و تم تیره
+- رندر **مارک‌داون** + هایلایت کد، با بج مدل/ارائه‌دهنده روی هر جواب
+- زیر هر جواب: **کپی**، **تلاش مجدد**، 👍/👎 و **سؤال‌های پیشنهادی بعدی**
+- سایدبار گفتگوها: ساخت، **تغییرنام**، حذف، **جستجو** و گروه‌بندی بر اساس تاریخ
+- 🎁 راهنمای داخلی ۶ API رایگان و قوی (Gemini، Groq، Cerebras، Mistral، OpenRouter، Together AI)
+- 🔐 **حساب مدیر** (ایمیل + رمز): آمار استفاده، کنترل نمایش ارائه‌دهنده‌ها برای مهمان‌ها، بکاپ/بازیابی، پاک‌سازی
+- مهمان‌ها بدون ورود و با کلید خودشون از سایت استفاده می‌کنن
+- ذخیره‌ی جداگانه‌ی کلید API برای هر ارائه‌دهنده (فقط توی مرورگر خودت، با localStorage)
+- رابط فارسی راست‌چین با فونت وزیرمتن و تم تیره‌ی بازطراحی‌شده
 
 ## 🚀 دیپلوی روی Railway
 
@@ -34,8 +39,12 @@ python3 -m http.server 8080
 
 | ارائه‌دهنده | آدرس گرفتن کلید |
 |---|---|
-| OpenAI | https://platform.openai.com/api-keys |
+| Google Gemini | https://aistudio.google.com |
+| Groq | https://console.groq.com |
+| Cerebras | https://cloud.cerebras.ai |
+| Mistral | https://console.mistral.ai |
 | OpenRouter | https://openrouter.ai/keys |
-| Groq | https://console.groq.com/keys |
+| Together AI | https://api.together.ai |
+| OpenAI | https://platform.openai.com/api-keys |
 | DeepSeek | https://platform.deepseek.com/api_keys |
 | xAI | https://console.x.ai |

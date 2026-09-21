@@ -1,4 +1,4 @@
-/* چت‌بات چند API — منطق اصلی (نسخه ۲: تشخیص هوشمند کلید + پنل مدیریت) */
+/* چت‌بات چند API — نسخه ۳ (بازطراحی کامل) */
 'use strict';
 
 const LS_SETTINGS = 'aichat.settings.v1';
@@ -21,7 +21,6 @@ const PROVIDER_PRESETS = {
 };
 const PROVIDER_IDS = Object.keys(PROVIDER_PRESETS);
 
-/* سرنخ‌های تشخیص ارائه‌دهنده از روی شکل کلید */
 const KEY_HINTS = [
   [/^sk-or-v1-/i, 'openrouter'],
   [/^gsk_/i, 'groq'],
@@ -30,6 +29,14 @@ const KEY_HINTS = [
   [/^csk-/i, 'cerebras'],
   [/^sk-proj-/i, 'openai'],
 ];
+
+const SUGGESTIONS = [
+  ['💡', 'یه ایده خلاقانه برای کانال تلگرامم بده'],
+  ['🐍', 'یه تابع پایتون برای مرتب‌سازی لیست بنویس'],
+  ['📝', 'این جمله رو به انگلیسی ترجمه کن: «هوش مصنوعی آینده است»'],
+  ['📚', 'یه برنامه مطالعه ۷ روزه برای امتحان ریاضی بساز'],
+];
+const FOLLOWUPS = ['بیشتر توضیح بده', 'یه مثال عملی بزن', 'خلاصه‌اش کن'];
 
 /* ---------- state ---------- */
 let settings = loadJSON(LS_SETTINGS, null) || defaultSettings();
@@ -40,28 +47,28 @@ let activeConvoId = convos.length ? convos[0].id : null;
 let editingProvider = settings.activeProvider || 'openai';
 let aborter = null;
 let adminTab = 'stats';
+let convoQuery = '';
 
 migrateSettings();
 
 function defaultSettings() {
-  const providers = {};
-  const providerVisible = {};
+  const providers = {}, providerVisible = {};
   for (const id of PROVIDER_IDS) {
-    providers[id] = { label: PROVIDER_PRESETS[id].label, baseUrl: PROVIDER_PRESETS[id].baseUrl, apiKey: '', model: PROVIDER_PRESETS[id].models[0] || '' };
+    providers[id] = { label: PROVIDER_PRESETS[id].label, baseUrl: PROVIDER_PRESETS[id].baseUrl, apiKey: '', model: PROVIDER_PRESETS[id].models[0] || '', modelsList: [] };
     providerVisible[id] = true;
   }
   return { providers, providerVisible, activeProvider: 'openai' };
 }
-/* مهاجرت تنظیمات قدیمی به نسخه جدید (بدون از دست رفتن کلیدها) */
 function migrateSettings() {
   let changed = false;
   if (!settings.providers) { settings.providers = {}; changed = true; }
   if (!settings.providerVisible) { settings.providerVisible = {}; changed = true; }
   for (const id of PROVIDER_IDS) {
     if (!settings.providers[id]) {
-      settings.providers[id] = { label: PROVIDER_PRESETS[id].label, baseUrl: PROVIDER_PRESETS[id].baseUrl, apiKey: '', model: PROVIDER_PRESETS[id].models[0] || '' };
+      settings.providers[id] = { label: PROVIDER_PRESETS[id].label, baseUrl: PROVIDER_PRESETS[id].baseUrl, apiKey: '', model: PROVIDER_PRESETS[id].models[0] || '', modelsList: [] };
       changed = true;
     }
+    if (!('modelsList' in settings.providers[id])) { settings.providers[id].modelsList = []; changed = true; }
     if (settings.providerVisible[id] === undefined) { settings.providerVisible[id] = true; changed = true; }
   }
   if (!settings.activeProvider || !settings.providers[settings.activeProvider]) { settings.activeProvider = 'openai'; changed = true; }
@@ -75,6 +82,11 @@ function activeProviderCfg() { return settings.providers[settings.activeProvider
 function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 8); }
 function isAdmin() { return !!admin && sessionStorage.getItem('aichat.admin.session') === '1'; }
 function visibleProviders() { return PROVIDER_IDS.filter((id) => isAdmin() || settings.providerVisible[id] !== false); }
+function providerModels(id) {
+  const p = settings.providers[id];
+  return (p.modelsList && p.modelsList.length ? p.modelsList : PROVIDER_PRESETS[id].models);
+}
+function escapeHtml(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, (m) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m])); }
 
 /* ---------- elements ---------- */
 const $ = (id) => document.getElementById(id);
@@ -99,86 +111,197 @@ function activeConvo() { return getConvo(activeConvoId); }
 function newConvo() {
   const c = { id: uid(), title: 'گفتگوی جدید', messages: [], provider: settings.activeProvider, model: activeProviderCfg().model, createdAt: Date.now(), updatedAt: Date.now() };
   convos.unshift(c); activeConvoId = c.id; saveConvos();
-  renderSidebar(); renderChat();
+  renderAll();
   inputEl.focus();
 }
-function setActiveConvo(id) { activeConvoId = id; saveConvos(); renderSidebar(); renderChat(); }
-function deleteConvo(id, ev) {
-  ev.stopPropagation();
+function setActiveConvo(id) { activeConvoId = id; saveConvos(); renderAll(); document.body.classList.remove('sidebar-open'); }
+function deleteConvo(id) {
   convos = convos.filter((c) => c.id !== id);
   if (activeConvoId === id) activeConvoId = convos.length ? convos[0].id : null;
-  saveConvos(); renderSidebar(); renderChat();
+  saveConvos(); renderAll();
 }
 function touchConvo(c) {
   c.updatedAt = Date.now();
   if (c.title === 'گفتگوی جدید' && c.messages.length >= 2) {
     const firstUser = c.messages.find((m) => m.role === 'user');
-    if (firstUser) c.title = firstUser.content.slice(0, 40) + (firstUser.content.length > 40 ? '…' : '');
+    if (firstUser) c.title = firstUser.content.slice(0, 42) + (firstUser.content.length > 42 ? '…' : '');
   }
   convos.sort((a, b) => b.updatedAt - a.updatedAt);
   saveConvos(); renderSidebar();
 }
 
+function groupLabel(ts) {
+  const day = 86400000;
+  const now = new Date();
+  const start = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  if (ts >= start) return 'امروز';
+  if (ts >= start - day) return 'دیروز';
+  if (ts >= start - 7 * day) return '۷ روز گذشته';
+  return 'قدیمی‌تر';
+}
+
 function renderSidebar() {
   const list = $('convo-list');
   list.innerHTML = '';
-  if (!convos.length) {
-    list.innerHTML = '<div class="convo-empty">هنوز گفتگویی نداری.<br>یکی بساز و شروع کن! ✨</div>';
+  let items = convos;
+  if (convoQuery.trim()) {
+    const q = convoQuery.trim();
+    items = convos.filter((c) => c.title.includes(q) || c.messages.some((m) => m.content.includes(q)));
   }
-  for (const c of convos) {
-    const d = document.createElement('div');
-    d.className = 'convo' + (c.id === activeConvoId ? ' active' : '');
-    d.innerHTML = '<span class="t"></span><button class="del" title="حذف">🗑</button>';
-    d.querySelector('.t').textContent = c.title;
-    d.onclick = () => setActiveConvo(c.id);
-    d.querySelector('.del').onclick = (e) => deleteConvo(c.id, e);
-    list.appendChild(d);
+  if (!items.length) {
+    list.innerHTML = '<div class="convo-empty"><span class="big">💬</span>' + (convoQuery.trim() ? 'چیزی پیدا نشد.' : 'هنوز گفتگویی نداری.<br>یکی بساز و شروع کن! ✨') + '</div>';
+  } else if (convoQuery.trim()) {
+    for (const c of items) list.appendChild(convoEl(c));
+  } else {
+    const groups = {};
+    for (const c of items) { const g = groupLabel(c.updatedAt); (groups[g] = groups[g] || []).push(c); }
+    for (const g of ['امروز', 'دیروز', '۷ روز گذشته', 'قدیمی‌تر']) {
+      if (!groups[g]) continue;
+      const gl = document.createElement('div');
+      gl.className = 'group-label'; gl.textContent = g;
+      list.appendChild(gl);
+      for (const c of groups[g]) list.appendChild(convoEl(c));
+    }
   }
   const p = activeProviderCfg();
   $('active-provider-chip').innerHTML = 'متصل به <b></b>';
   $('active-provider-chip').querySelector('b').textContent = p.label;
   $('btn-admin').textContent = isAdmin() ? '🛡 پنل مدیر' : '🔐 ورود مدیر';
   $('admin-badge').classList.toggle('hidden', !isAdmin());
+  renderMsLabel();
+}
+
+function convoEl(c) {
+  const d = document.createElement('div');
+  d.className = 'convo' + (c.id === activeConvoId ? ' active' : '');
+  d.innerHTML = '<span class="t"></span><span class="convo-actions"><button class="icon-btn rn" title="تغییر نام">✏️</button><button class="icon-btn del" title="حذف">🗑</button></span>';
+  d.querySelector('.t').textContent = c.title;
+  d.onclick = () => setActiveConvo(c.id);
+  d.querySelector('.del').onclick = (e) => { e.stopPropagation(); if (confirm('این گفتگو حذف بشه؟')) deleteConvo(c.id); };
+  d.querySelector('.rn').onclick = (e) => { e.stopPropagation(); startRename(c.id, d); };
+  return d;
+}
+
+function startRename(id, itemEl) {
+  const c = getConvo(id);
+  if (!c) return;
+  const tEl = itemEl.querySelector('.t');
+  const inp = document.createElement('input');
+  inp.className = 'rename-input';
+  inp.value = c.title === 'گفتگوی جدید' ? '' : c.title;
+  inp.placeholder = 'نام گفتگو…';
+  tEl.replaceWith(inp);
+  inp.focus();
+  let done = false;
+  const finish = (save) => {
+    if (done) return; done = true;
+    if (save && inp.value.trim()) { c.title = inp.value.trim().slice(0, 60); saveConvos(); }
+    renderSidebar();
+    if (activeConvoId === id) renderChat();
+  };
+  inp.onclick = (e) => e.stopPropagation();
+  inp.onkeydown = (e) => { e.stopPropagation(); if (e.key === 'Enter') finish(true); if (e.key === 'Escape') finish(false); };
+  inp.onblur = () => finish(true);
 }
 
 /* ---------- chat rendering ---------- */
+function renderAll() { renderSidebar(); renderChat(); }
+
 function renderChat() {
   const c = activeConvo();
   messagesEl.innerHTML = '';
   hideError();
+  closeModelMenu();
   if (!c || !c.messages.length) {
     welcomeEl.classList.remove('hidden');
-    $('chat-title').textContent = 'گفتگوی جدید';
   } else {
     welcomeEl.classList.add('hidden');
-    $('chat-title').textContent = c.title;
-    for (const m of c.messages) appendMessage(m.role, m.content, false);
+    const lastIdx = c.messages.length - 1;
+    c.messages.forEach((m, i) => {
+      if (m.role === 'user') messagesEl.appendChild(buildUserEl(m));
+      else messagesEl.appendChild(buildAssistantEl(m, i, i === lastIdx));
+    });
   }
-  const p = activeProviderCfg();
-  $('header-provider').textContent = p.label;
-  $('header-model').textContent = p.model || '—';
+  renderMsLabel();
+  renderSuggestions();
   messagesEl.scrollTop = messagesEl.scrollHeight;
 }
 
-function appendMessage(role, content, animate = true) {
-  welcomeEl.classList.add('hidden');
+function buildUserEl(m) {
   const wrap = document.createElement('div');
-  wrap.className = 'msg ' + role;
-  const roleEl = document.createElement('div');
-  roleEl.className = 'role';
-  roleEl.textContent = role === 'user' ? 'شما' : ('🤖 ' + activeProviderCfg().label);
-  const bubble = document.createElement('div');
-  bubble.className = 'bubble';
-  wrap.appendChild(roleEl); wrap.appendChild(bubble);
-  messagesEl.appendChild(wrap);
-  if (role === 'user') { bubble.textContent = content; }
-  else { bubble.innerHTML = renderMarkdown(content); }
-  messagesEl.scrollTop = messagesEl.scrollHeight;
-  return bubble;
+  wrap.className = 'msg user';
+  const b = document.createElement('div');
+  b.className = 'bubble';
+  b.textContent = m.content;
+  wrap.appendChild(b);
+  return wrap;
+}
+
+function buildAssistantEl(m, idx, isLast) {
+  const wrap = document.createElement('div');
+  wrap.className = 'msg assistant';
+  wrap.dataset.idx = idx;
+  const pid = m.provider || settings.activeProvider;
+  const plabel = (settings.providers[pid] || {}).label || pid;
+  const head = document.createElement('div');
+  head.className = 'answer-head';
+  head.innerHTML = '<span class="model-badge"><span class="dot"></span><span></span></span>';
+  head.querySelector('.model-badge span:last-child').textContent = plabel + (m.model ? ' · ' + m.model : '');
+  const body = document.createElement('div');
+  body.className = 'answer-body';
+  body.innerHTML = renderMarkdown(m.content);
+  const actions = document.createElement('div');
+  actions.className = 'msg-actions';
+  actions.innerHTML =
+    '<button class="act-btn" data-act="copy">📋 کپی</button>' +
+    '<button class="act-btn" data-act="regen">🔄 تلاش مجدد</button>' +
+    '<button class="act-btn' + (m.rating === 1 ? ' on' : '') + '" data-act="like">👍</button>' +
+    '<button class="act-btn' + (m.rating === -1 ? ' on' : '') + '" data-act="dislike">👎</button>';
+  wrap.appendChild(head); wrap.appendChild(body); wrap.appendChild(actions);
+  if (isLast) {
+    const fu = document.createElement('div');
+    fu.className = 'followups';
+    for (const q of FOLLOWUPS) {
+      const chip = document.createElement('button');
+      chip.className = 'fu-chip';
+      chip.textContent = q;
+      chip.dataset.follow = q;
+      fu.appendChild(chip);
+    }
+    wrap.appendChild(fu);
+  }
+  return wrap;
+}
+
+function renderSuggestions() {
+  const g = $('suggest-grid');
+  if (!g || g.dataset.done) return;
+  g.dataset.done = '1';
+  for (const [ic, tx] of SUGGESTIONS) {
+    const card = document.createElement('button');
+    card.className = 'suggest-card';
+    card.innerHTML = '<span class="ic"></span><span class="tx"></span>';
+    card.querySelector('.ic').textContent = ic;
+    card.querySelector('.tx').textContent = tx;
+    card.onclick = () => submitUserText(tx);
+    g.appendChild(card);
+  }
+  const wp = $('welcome-providers');
+  wp.innerHTML = '';
+  for (const id of visibleProviders()) {
+    if (id === 'custom') continue;
+    const s = document.createElement('span');
+    s.textContent = settings.providers[id].label;
+    wp.appendChild(s);
+  }
 }
 
 function showError(msg) { errorBar.textContent = msg; errorBar.classList.remove('hidden'); }
 function hideError() { errorBar.classList.add('hidden'); }
+function showStop(on) {
+  $('btn-send').classList.toggle('hidden', on);
+  $('btn-stop').classList.toggle('hidden', !on);
+}
 
 /* ---------- API ---------- */
 async function streamChat(apiMessages, cfg, onToken, signal) {
@@ -217,462 +340,585 @@ async function streamChat(apiMessages, cfg, onToken, signal) {
   }
 }
 
-async function sendMessage() {
-  const text = inputEl.value.trim();
+function bumpStats(pid, n) { stats.messages += n; stats.byProvider[pid] = (stats.byProvider[pid] || 0) + n; saveStats(); }
+
+async function submitUserText(text) {
+  text = (text || '').trim();
   if (!text || aborter) return;
   const cfg = activeProviderCfg();
-  if (!cfg.apiKey) { showError('اول باید کلید API رو وارد کنی. از «اتصال هوشمند» توی تنظیمات استفاده کن — خودش تشخیص می‌ده. ⚡'); openSettings(); return; }
-  if (!cfg.model) { showError('مدل انتخاب نشده. از تنظیمات یه مدل انتخاب کن.'); openSettings(); return; }
+  if (!cfg.apiKey) { showError('اول باید کلید API رو وارد کنی. از «اتصال هوشمند» توی تنظیمات استفاده کن — خودش تشخیص می‌ده. ⚡'); openSettings(); setTimeout(() => $('smart-key').focus(), 300); return; }
+  if (!cfg.model) { showError('مدل انتخاب نشده. از سوییچر بالای صفحه یه مدل انتخاب کن.'); return; }
 
   let c = activeConvo();
-  if (!c) { newConvo(); c = activeConvo(); }
+  if (!c) {
+    c = { id: uid(), title: 'گفتگوی جدید', messages: [], provider: settings.activeProvider, model: cfg.model, createdAt: Date.now(), updatedAt: Date.now() };
+    convos.unshift(c); activeConvoId = c.id;
+  }
   c.provider = settings.activeProvider; c.model = cfg.model;
-
   hideError();
   inputEl.value = ''; autoresize();
   c.messages.push({ role: 'user', content: text });
-  appendMessage('user', text);
   bumpStats(c.provider, 1);
-  touchConvo(c);
+  saveConvos();
+  renderAll();
+  await runAssistant(c);
+}
 
-  const bubble = appendMessage('assistant', '');
-  bubble.innerHTML = '<span class="cursor"></span>';
-  $('btn-send').classList.add('hidden');
-  $('btn-stop').classList.remove('hidden');
+async function runAssistant(c) {
+  const cfg = settings.providers[c.provider] || activeProviderCfg();
+  const wrap = document.createElement('div');
+  wrap.className = 'msg assistant';
+  wrap.innerHTML = '<div class="answer-head"><span class="model-badge"><span class="dot"></span><span></span></span></div><div class="answer-body"><span class="cursor"></span></div>';
+  wrap.querySelector('.model-badge span:last-child').textContent = cfg.label + (cfg.model ? ' · ' + cfg.model : '');
+  welcomeEl.classList.add('hidden');
+  messagesEl.appendChild(wrap);
+  messagesEl.scrollTop = messagesEl.scrollHeight;
+  const body = wrap.querySelector('.answer-body');
 
+  showStop(true);
   aborter = new AbortController();
   let full = '';
   let lastRender = 0;
   try {
-    await streamChat(c.messages, cfg, (tok) => {
+    await streamChat(c.messages.map((m) => ({ role: m.role, content: m.content })), cfg, (tok) => {
       full += tok;
       const now = Date.now();
-      if (now - lastRender > 120) {
+      if (now - lastRender > 110) {
         lastRender = now;
-        bubble.innerHTML = renderMarkdown(full) + '<span class="cursor"></span>';
+        body.innerHTML = renderMarkdown(full) + '<span class="cursor"></span>';
         messagesEl.scrollTop = messagesEl.scrollHeight;
       }
     }, aborter.signal);
-    bubble.innerHTML = renderMarkdown(full);
-    c.messages.push({ role: 'assistant', content: full });
+    c.messages.push({ role: 'assistant', content: full, provider: c.provider, model: cfg.model, rating: 0 });
     bumpStats(c.provider, 1);
     touchConvo(c);
+    renderChat();
   } catch (e) {
     if (e.name === 'AbortError') {
-      bubble.innerHTML = renderMarkdown(full) + '\n\n*⏹ متوقف شد.*';
-      if (full) { c.messages.push({ role: 'assistant', content: full }); bumpStats(c.provider, 1); touchConvo(c); }
-      else bubble.remove();
+      if (full) {
+        c.messages.push({ role: 'assistant', content: full + '\n\n*⏹ متوقف شد.*', provider: c.provider, model: cfg.model, rating: 0 });
+        bumpStats(c.provider, 1); touchConvo(c);
+      }
+      renderChat();
     } else {
-      bubble.remove();
+      wrap.remove();
       showError('⚠️ ' + (e.message || 'خطایی رخ داد. اتصال اینترنت و کلید API رو بررسی کن.'));
     }
   } finally {
     aborter = null;
-    $('btn-send').classList.remove('hidden');
-    $('btn-stop').classList.add('hidden');
+    showStop(false);
     messagesEl.scrollTop = messagesEl.scrollHeight;
   }
 }
 
+async function regenerate() {
+  const c = activeConvo();
+  if (!c || aborter) return;
+  while (c.messages.length && c.messages[c.messages.length - 1].role === 'assistant') c.messages.pop();
+  if (!c.messages.length || c.messages[c.messages.length - 1].role !== 'user') { showError('پیامی برای بازتولید نیست.'); return; }
+  saveConvos(); renderChat();
+  await runAssistant(c);
+}
+
 function stopStream() { if (aborter) aborter.abort(); }
-function bumpStats(pid, n) { stats.messages += n; stats.byProvider[pid] = (stats.byProvider[pid] || 0) + n; saveStats(); }
 
-/* ---------- تشخیص هوشمند کلید ---------- */
-function orderCandidates(key) {
-  const hinted = [];
-  for (const [rx, id] of KEY_HINTS) if (rx.test(key)) hinted.push(id);
-  if (/^sk-/i.test(key) && !hinted.includes('openai') && !hinted.includes('deepseek')) hinted.push('openai', 'deepseek');
-  const rest = PROVIDER_IDS.filter((id) => id !== 'custom' && !hinted.includes(id));
-  return [...hinted, ...rest];
+/* ---------- سوییچر مدل (سبک LobeChat) ---------- */
+function renderMsLabel() {
+  const p = activeProviderCfg();
+  $('ms-label').innerHTML = '';
+  const b = document.createElement('b');
+  b.textContent = p.label;
+  const s = document.createElement('span');
+  s.className = 'mname';
+  s.textContent = p.model ? ' · ' + p.model : '';
+  s.dir = 'ltr';
+  $('ms-label').appendChild(b);
+  $('ms-label').appendChild(s);
 }
-
-async function probeProvider(id, key) {
-  const base = PROVIDER_PRESETS[id].baseUrl.replace(/\/+$/, '');
-  const ctrl = new AbortController();
-  const t = setTimeout(() => ctrl.abort(), 12000);
-  try {
-    const res = await fetch(base + '/models', { headers: { 'Authorization': 'Bearer ' + key }, signal: ctrl.signal });
-    if (!res.ok) return null;
-    const j = await res.json();
-    return (j.data || []).map((m) => m.id).sort();
-  } catch { return null; }
-  finally { clearTimeout(t); }
-}
-
-function pickDefaultModel(ids) {
-  if (!ids.length) return '';
-  const pref = [/gemini-2\.0-flash$/, /gemini-2\.5-flash$/, /llama-3\.3-70b-versatile$/, /llama-3\.3-70b$/, /mistral-small/, /deepseek-chat$/, /grok-3-mini$/, /gpt-4o-mini$/];
-  for (const rx of pref) { const m = ids.find((i) => rx.test(i)); if (m) return m; }
-  const chat = ids.find((i) => /chat|instruct|gpt|llama|qwen|mistral|gemini|grok|deepseek|command|mixtral/i.test(i));
-  return chat || ids[0];
-}
-
-async function smartConnect() {
-  const key = $('smart-key').value.trim();
-  const box = $('smart-result');
-  box.classList.remove('hidden', 'ok', 'err');
-  if (!key) { box.classList.add('err'); box.textContent = 'اول کلید API رو بچسبون.'; return; }
-  box.textContent = '⏳ در حال تشخیص ارائه‌دهنده…';
-  $('btn-smart').disabled = true;
-  try {
-    for (const id of orderCandidates(key)) {
-      const ids = await probeProvider(id, key);
-      if (ids) {
-        editingProvider = id;
-        const p = settings.providers[id];
-        p.apiKey = key;
-        fillModelDatalist(ids);
-        if (ids.length) p.model = pickDefaultModel(ids);
-        saveSettings();
-        renderProviderTabs();
-        loadProviderForm();
-        box.classList.add('ok');
-        box.textContent = '✅ تشخیص داده شد: ' + settings.providers[id].label + ' — ' + ids.length + ' مدل. مدل پیشنهادی انتخاب شد، ذخیره رو بزن.';
-        return;
-      }
+function openModelMenu() {
+  const menu = $('model-menu');
+  menu.innerHTML = '';
+  for (const id of visibleProviders()) {
+    if (id === 'custom') continue;
+    const p = settings.providers[id];
+    const g = document.createElement('div');
+    g.className = 'mm-group';
+    const h = document.createElement('div');
+    h.className = 'mm-provider';
+    h.textContent = (p.apiKey ? '' : '🔑 ') + p.label;
+    g.appendChild(h);
+    const models = providerModels(id);
+    if (!models.length) {
+      const s = document.createElement('div');
+      s.className = 'mm-empty';
+      s.textContent = 'مدلی ثبت نشده';
+      g.appendChild(s);
     }
-    box.classList.add('err');
-    box.textContent = '❌ هیچ ارائه‌دهنده‌ای با این کلید جواب نداد. کلید رو بررسی کن یا از تب «✏️ سفارشی» آدرس رو دستی بده.';
-  } finally {
-    $('btn-smart').disabled = false;
+    for (const m of models.slice(0, 30)) {
+      const btn = document.createElement('button');
+      btn.className = 'mm-model' + (settings.activeProvider === id && p.model === m ? ' sel' : '');
+      btn.dir = 'ltr';
+      btn.textContent = m;
+      btn.onclick = () => selectModel(id, m);
+      g.appendChild(btn);
+    }
+    menu.appendChild(g);
   }
+  menu.classList.remove('hidden');
+}
+function closeModelMenu() { $('model-menu').classList.add('hidden'); }
+function selectModel(id, m) {
+  closeModelMenu();
+  if (!settings.providers[id].apiKey) {
+    editingProvider = id;
+    openSettings();
+    setTimeout(() => { $('smart-key').focus(); }, 300);
+    return;
+  }
+  settings.activeProvider = id;
+  settings.providers[id].model = m;
+  saveSettings();
+  const c = activeConvo();
+  if (c && !c.messages.length) { c.provider = id; c.model = m; saveConvos(); }
+  renderAll();
 }
 
-function fillModelDatalist(ids) {
-  const dl = $('model-datalist');
-  dl.innerHTML = '';
-  for (const id of ids) { const o = document.createElement('option'); o.value = id; dl.appendChild(o); }
-}
-
-/* ---------- settings modal ---------- */
-function openSettings() {
-  if (!visibleProviders().includes(editingProvider)) editingProvider = visibleProviders()[0] || 'openai';
-  if (!visibleProviders().includes(settings.activeProvider)) { settings.activeProvider = visibleProviders()[0] || 'openai'; saveSettings(); }
-  renderProviderTabs();
-  loadProviderForm();
-  $('smart-key').value = '';
-  $('smart-result').classList.add('hidden');
-  $('test-result').classList.add('hidden');
-  $('settings-modal').classList.remove('hidden');
-}
-function closeSettings() { $('settings-modal').classList.add('hidden'); renderSidebar(); renderChat(); }
-
-function renderProviderTabs() {
+/* ---------- مودال تنظیمات ---------- */
+function fillProviderTabs() {
   const tabs = $('provider-tabs');
   tabs.innerHTML = '';
   for (const id of visibleProviders()) {
     const b = document.createElement('button');
-    b.textContent = settings.providers[id].label + (isAdmin() && settings.providerVisible[id] === false ? ' 👁‍🗨' : '');
+    b.textContent = settings.providers[id].label;
     if (id === editingProvider) b.classList.add('active');
-    b.onclick = () => { saveProviderForm(); editingProvider = id; renderProviderTabs(); loadProviderForm(); $('test-result').classList.add('hidden'); };
+    b.onclick = () => { editingProvider = id; fillProviderTabs(); fillSettingsForm(); };
     tabs.appendChild(b);
   }
-  const wp = $('welcome-providers');
-  wp.innerHTML = '';
-  for (const id of visibleProviders()) {
-    if (id === 'custom') continue;
-    const s = document.createElement('span');
-    s.textContent = settings.providers[id].label;
-    wp.appendChild(s);
-  }
 }
-function loadProviderForm() {
+function fillSettingsForm() {
   const p = settings.providers[editingProvider];
   $('set-name').value = p.label;
   $('set-baseurl').value = p.baseUrl;
-  $('set-key').value = p.apiKey;
-  $('set-key').type = 'password';
-  $('set-model').value = p.model;
-  fillModelDatalist(PROVIDER_PRESETS[editingProvider].models || []);
+  $('set-key').value = p.apiKey || '';
+  $('set-model').value = p.model || '';
+  const dl = $('model-datalist');
+  dl.innerHTML = '';
+  for (const m of providerModels(editingProvider)) {
+    const o = document.createElement('option');
+    o.value = m;
+    dl.appendChild(o);
+  }
+  hideTest();
 }
-function saveProviderForm() {
-  const p = settings.providers[editingProvider];
-  p.label = $('set-name').value.trim() || PROVIDER_PRESETS[editingProvider].label;
-  p.baseUrl = $('set-baseurl').value.trim().replace(/\/+$/, '');
-  p.apiKey = $('set-key').value.trim();
-  p.model = $('set-model').value.trim();
+function openSettings() {
+  if (!visibleProviders().includes(editingProvider)) editingProvider = settings.activeProvider;
+  fillProviderTabs();
+  fillSettingsForm();
+  $('smart-key').value = '';
+  $('settings-modal').classList.remove('hidden');
 }
-function setAsActive() {
-  saveProviderForm();
-  settings.activeProvider = editingProvider;
-  saveSettings();
+function closeSettings() { $('settings-modal').classList.add('hidden'); }
+function showTest(msg, ok) {
+  const el = $('test-result');
+  el.textContent = msg;
+  el.className = 'test-result ' + (ok ? 'ok' : 'err');
+  el.classList.remove('hidden');
 }
+function hideTest() { $('test-result').classList.add('hidden'); }
 
 async function testConnection() {
-  saveProviderForm();
-  const p = settings.providers[editingProvider];
-  const box = $('test-result');
-  box.classList.remove('hidden', 'ok', 'err');
-  if (!p.baseUrl || !p.apiKey) { box.classList.add('err'); box.textContent = 'آدرس پایه و کلید API رو وارد کن.'; return; }
-  box.textContent = '⏳ در حال تست اتصال…';
+  const cfg = { label: $('set-name').value.trim(), baseUrl: $('set-baseurl').value.trim(), apiKey: $('set-key').value.trim(), model: $('set-model').value.trim() };
+  if (!cfg.apiKey) { showTest('کلید API رو وارد کن.', false); return; }
+  if (!cfg.baseUrl) { showTest('آدرس پایه (Base URL) رو وارد کن.', false); return; }
+  if (!cfg.model) { showTest('نام مدل رو وارد کن.', false); return; }
+  showTest('⏳ در حال تست…', true);
   try {
-    const res = await fetch(p.baseUrl.replace(/\/+$/, '') + '/models', { headers: { 'Authorization': 'Bearer ' + p.apiKey } });
-    if (!res.ok) throw new Error('خطای ' + res.status);
-    const j = await res.json();
-    const n = (j.data || []).length;
-    box.classList.add('ok');
-    box.textContent = '✅ اتصال موفق! ' + (n ? n + ' مدل در دسترسه.' : 'کلید معتبره.');
+    const base = cfg.baseUrl.replace(/\/+$/, '');
+    const res = await fetch(base + '/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + cfg.apiKey },
+      body: JSON.stringify({ model: cfg.model, messages: [{ role: 'user', content: 'Hi' }], max_tokens: 5, stream: false }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (res.ok) showTest('✅ اتصال موفق! مدل جواب داد.', true);
+    else showTest('❌ خطا: ' + (data.error?.message || res.status), false);
   } catch (e) {
-    box.classList.add('err');
-    box.textContent = '❌ اتصال ناموفق: ' + e.message + '. آدرس، کلید و اینترنت رو بررسی کن.';
+    showTest('❌ خطا: ' + (e.message || 'اتصال برقرار نشد'), false);
   }
 }
 
 async function fetchModels() {
-  saveProviderForm();
-  const p = settings.providers[editingProvider];
-  const box = $('test-result');
-  box.classList.remove('hidden', 'ok', 'err');
-  if (!p.baseUrl || !p.apiKey) { box.classList.add('err'); box.textContent = 'اول آدرس پایه و کلید API رو وارد کن.'; return; }
-  box.textContent = '⏳ در حال دریافت لیست مدل‌ها…';
+  const baseUrl = $('set-baseurl').value.trim();
+  const apiKey = $('set-key').value.trim();
+  if (!apiKey) { showTest('اول کلید API رو وارد کن.', false); return; }
+  showTest('⏳ در حال دریافت مدل‌ها…', true);
   try {
-    const res = await fetch(p.baseUrl.replace(/\/+$/, '') + '/models', { headers: { 'Authorization': 'Bearer ' + p.apiKey } });
+    const base = baseUrl.replace(/\/+$/, '');
+    const res = await fetch(base + '/models', { headers: { 'Authorization': 'Bearer ' + apiKey } });
     if (!res.ok) throw new Error('خطای ' + res.status);
-    const j = await res.json();
-    const ids = (j.data || []).map((m) => m.id).sort();
-    fillModelDatalist(ids);
-    box.classList.add('ok');
-    box.textContent = '✅ ' + ids.length + ' مدل پیدا شد. حالا از کادر مدل یکی رو انتخاب کن.';
+    const data = await res.json();
+    const ids = (data.data || []).map((m) => m.id).filter(Boolean).sort();
+    if (!ids.length) { showTest('لیست مدل‌ها خالی برگشت.', false); return; }
+    settings.providers[editingProvider].modelsList = ids;
+    saveSettings();
+    fillSettingsForm();
+    if (!($('set-model').value.trim())) $('set-model').value = ids[0];
+    showTest('✅ ' + ids.length + ' مدل پیدا شد.', true);
   } catch (e) {
-    box.classList.add('err');
-    box.textContent = '❌ نشد: ' + e.message;
+    showTest('❌ ' + (e.message || 'دریافت مدل‌ها ناموفق بود'), false);
   }
 }
 
-/* ---------- مدیریت (ادمین) ---------- */
-async function sha256Hex(s) {
-  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode('aichat-admin::' + s));
-  return [...new Uint8Array(buf)].map((x) => x.toString(16).padStart(2, '0')).join('');
+/* اتصال هوشمند */
+async function smartConnect() {
+  const key = $('smart-key').value.trim();
+  const box = $('smart-result');
+  box.className = 'test-result err'; box.classList.remove('hidden');
+  if (!key || key.length < 8) { box.textContent = 'اول کلید API رو بچسبون.'; return; }
+  const btn = $('btn-smart');
+  btn.disabled = true; btn.textContent = '⏳';
+  box.className = 'test-result ok';
+  box.textContent = '⏳ در حال تشخیص…';
+  try {
+    let pid = null;
+    for (const [re, id] of KEY_HINTS) if (re.test(key)) { pid = id; break; }
+    if (!pid) {
+      box.className = 'test-result err';
+      box.textContent = '❌ این کلید رو نشناختم. از تب‌های پایین، ارائه‌دهنده رو دستی انتخاب کن و کلید رو اونجا وارد کن.';
+      return;
+    }
+    const p = settings.providers[pid];
+    p.apiKey = key;
+    settings.activeProvider = pid;
+    editingProvider = pid;
+    saveSettings();
+    let modelCount = 0, chosen = p.model;
+    try {
+      const base = p.baseUrl.replace(/\/+$/, '');
+      const res = await fetch(base + '/models', { headers: { 'Authorization': 'Bearer ' + key } });
+      if (res.ok) {
+        const data = await res.json();
+        const ids = (data.data || []).map((m) => m.id).filter(Boolean).sort();
+        if (ids.length) {
+          p.modelsList = ids; modelCount = ids.length;
+          const preset = PROVIDER_PRESETS[pid].models[0];
+          chosen = ids.includes(preset) ? preset : ids.find((m) => /flash|mini|small/i.test(m)) || ids[0];
+          p.model = chosen;
+        }
+      }
+    } catch {}
+    if (!p.model && providerModels(pid).length) p.model = providerModels(pid)[0];
+    saveSettings();
+    fillProviderTabs(); fillSettingsForm(); renderAll();
+    box.className = 'test-result ok';
+    box.textContent = '✅ وصل شدی به ' + p.label + '!' + (chosen ? ' مدل پیشنهادی: ' + chosen : '') + (modelCount ? ' (' + modelCount + ' مدل پیدا شد)' : '');
+  } finally {
+    btn.disabled = false; btn.textContent = 'تشخیص';
+  }
 }
+
+function saveProviderSettings() {
+  const p = settings.providers[editingProvider];
+  p.label = $('set-name').value.trim() || PROVIDER_PRESETS[editingProvider].label;
+  p.baseUrl = $('set-baseurl').value.trim();
+  p.apiKey = $('set-key').value.trim();
+  p.model = $('set-model').value.trim();
+  saveSettings();
+  fillProviderTabs(); fillSettingsForm(); renderAll();
+  showTest('💾 ذخیره شد.', true);
+}
+
+/* ---------- پنل مدیریت ---------- */
+async function sha256(str) {
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
+  return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+function saveAdmin() { localStorage.setItem(LS_ADMIN, JSON.stringify(admin)); }
+
 function openAdmin() {
   renderAdminAuth();
-  $('admin-panel').classList.add('hidden');
+  renderAdminPanel();
   $('admin-modal').classList.remove('hidden');
 }
-function closeAdmin() { $('admin-modal').classList.add('hidden'); renderSidebar(); }
+function closeAdmin() { $('admin-modal').classList.add('hidden'); }
 
 function renderAdminAuth() {
   const box = $('admin-auth');
-  box.classList.remove('hidden');
+  if (isAdmin()) { box.innerHTML = ''; return; }
   if (!admin) {
     box.innerHTML =
       '<h3>👑 ساخت حساب مدیر</h3>' +
-      '<p class="note">هنوز حسابی ساخته نشده. ایمیل و رمز عبورت رو وارد کن تا فقط تو به پنل مدیریت دسترسی داشته باشی.</p>' +
-      '<label>ایمیل<input type="email" id="adm-email" dir="ltr" placeholder="you@mail.com"></label>' +
+      '<p class="note">هنوز حسابی ساخته نشده. یه ایمیل و رمز برای خودت بساز — فقط تو با این مشخصات می‌تونی وارد پنل مدیریت بشی.</p>' +
+      '<label>ایمیل<input type="email" id="adm-email" dir="ltr" placeholder="you@example.com"></label>' +
       '<label>رمز عبور<input type="password" id="adm-pass" placeholder="حداقل ۶ کاراکتر"></label>' +
-      '<label>تکرار رمز عبور<input type="password" id="adm-pass2" placeholder="تکرار رمز عبور"></label>' +
-      '<div id="adm-msg" class="test-result hidden"></div>' +
-      '<div class="modal-actions"><button id="adm-create" class="btn-primary">ساخت حساب مدیر</button></div>';
+      '<label>تکرار رمز عبور<input type="password" id="adm-pass2" placeholder="تکرار رمز"></label>' +
+      '<div class="modal-actions"><button class="btn-primary" id="adm-create">ساخت حساب مدیر</button></div>' +
+      '<div id="adm-msg" class="test-result hidden"></div>';
     $('adm-create').onclick = async () => {
       const email = $('adm-email').value.trim().toLowerCase();
       const p1 = $('adm-pass').value, p2 = $('adm-pass2').value;
-      const msg = $('adm-msg'); msg.classList.remove('hidden', 'ok', 'err');
-      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { msg.classList.add('err'); msg.textContent = 'ایمیل معتبر وارد کن.'; return; }
-      if (p1.length < 6) { msg.classList.add('err'); msg.textContent = 'رمز عبور باید حداقل ۶ کاراکتر باشه.'; return; }
-      if (p1 !== p2) { msg.classList.add('err'); msg.textContent = 'تکرار رمز با رمز یکی نیست.'; return; }
-      admin = { email, passHash: await sha256Hex(p1), createdAt: Date.now() };
-      localStorage.setItem(LS_ADMIN, JSON.stringify(admin));
+      const msg = $('adm-msg');
+      msg.classList.remove('hidden');
+      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { msg.className = 'test-result err'; msg.textContent = 'ایمیل معتبر نیست.'; return; }
+      if (p1.length < 6) { msg.className = 'test-result err'; msg.textContent = 'رمز باید حداقل ۶ کاراکتر باشه.'; return; }
+      if (p1 !== p2) { msg.className = 'test-result err'; msg.textContent = 'تکرار رمز با رمز یکی نیست.'; return; }
+      admin = { email, passHash: await sha256('aichat-admin::' + p1), createdAt: Date.now() };
+      saveAdmin();
       sessionStorage.setItem('aichat.admin.session', '1');
-      renderAdminPanel();
+      msg.className = 'test-result ok'; msg.textContent = '✅ حساب ساخته شد و وارد شدی!';
+      setTimeout(() => { renderAdminAuth(); renderAdminPanel(); renderAll(); }, 700);
     };
-  } else if (!isAdmin()) {
+  } else {
     box.innerHTML =
       '<h3>🔐 ورود مدیر</h3>' +
-      '<p class="note">این بخش فقط برای مدیر سایته. بقیه بدون ورود می‌تونن چت کنن.</p>' +
-      '<label>ایمیل<input type="email" id="adm-email" dir="ltr" placeholder="you@mail.com"></label>' +
+      '<p class="note">فقط با ایمیل و رمزی که موقع ساخت حساب وارد کردی می‌تونی وارد بشی.</p>' +
+      '<label>ایمیل<input type="email" id="adm-email" dir="ltr" placeholder="you@example.com"></label>' +
       '<label>رمز عبور<input type="password" id="adm-pass" placeholder="رمز عبور"></label>' +
-      '<div id="adm-msg" class="test-result hidden"></div>' +
-      '<div class="modal-actions"><button id="adm-login" class="btn-primary">ورود</button></div>';
-    const doLogin = async () => {
+      '<div class="modal-actions"><button class="btn-primary" id="adm-login">ورود</button></div>' +
+      '<div id="adm-msg" class="test-result hidden"></div>';
+    $('adm-login').onclick = async () => {
       const email = $('adm-email').value.trim().toLowerCase();
-      const msg = $('adm-msg'); msg.classList.remove('hidden', 'ok', 'err');
-      const h = await sha256Hex($('adm-pass').value);
+      const pass = $('adm-pass').value;
+      const msg = $('adm-msg');
+      msg.classList.remove('hidden');
+      const h = await sha256('aichat-admin::' + pass);
       if (email === admin.email && h === admin.passHash) {
         sessionStorage.setItem('aichat.admin.session', '1');
-        renderAdminPanel();
-      } else { msg.classList.add('err'); msg.textContent = '❌ ایمیل یا رمز عبور اشتباهه.'; }
+        msg.className = 'test-result ok'; msg.textContent = '✅ خوش برگشتی!';
+        setTimeout(() => { renderAdminAuth(); renderAdminPanel(); renderAll(); }, 600);
+      } else {
+        msg.className = 'test-result err'; msg.textContent = '❌ ایمیل یا رمز اشتباهه.';
+      }
     };
-    $('adm-login').onclick = doLogin;
-    $('adm-pass').addEventListener('keydown', (e) => { if (e.key === 'Enter') doLogin(); });
-  } else {
-    renderAdminPanel();
   }
 }
 
 function renderAdminPanel() {
-  $('admin-auth').classList.add('hidden');
   const panel = $('admin-panel');
+  if (!isAdmin()) { panel.classList.add('hidden'); return; }
   panel.classList.remove('hidden');
   const tabs = $('admin-tabs');
   tabs.innerHTML = '';
-  const defs = [['stats', '📊 آمار'], ['providers', '🔌 ارائه‌دهنده‌ها'], ['data', '💾 داده‌ها'], ['security', '🛡 امنیت']];
-  for (const [id, label] of defs) {
+  const names = { stats: '📊 آمار', providers: '🎛 ارائه‌دهنده‌ها', security: '🔑 امنیت', data: '💾 داده‌ها' };
+  for (const [id, label] of Object.entries(names)) {
     const b = document.createElement('button');
     b.textContent = label;
-    if (id === adminTab) b.classList.add('active');
+    if (adminTab === id) b.classList.add('active');
     b.onclick = () => { adminTab = id; renderAdminPanel(); };
     tabs.appendChild(b);
   }
   const c = $('admin-content');
+  c.innerHTML = '';
   if (adminTab === 'stats') renderAdminStats(c);
   else if (adminTab === 'providers') renderAdminProviders(c);
+  else if (adminTab === 'security') renderAdminSecurity(c);
   else if (adminTab === 'data') renderAdminData(c);
-  else renderAdminSecurity(c);
-  renderSidebar();
 }
 
 function renderAdminStats(c) {
-  const keys = PROVIDER_IDS.filter((id) => settings.providers[id].apiKey).length;
-  const max = Math.max(1, ...Object.values(stats.byProvider));
-  let bars = '';
-  for (const id of PROVIDER_IDS) {
-    const n = stats.byProvider[id] || 0;
-    if (!n) continue;
-    bars += '<div class="stat-bar"><span class="sb-label">' + escapeHtml(settings.providers[id].label) + '</span>' +
-      '<div class="sb-track"><div class="sb-fill" style="width:' + Math.round((n / max) * 100) + '%"></div></div>' +
-      '<span class="sb-num">' + n + '</span></div>';
+  const total = convos.length;
+  const totalMsgs = convos.reduce((n, x) => n + x.messages.length, 0);
+  c.innerHTML = '<h3>📊 آمار کلی</h3><div class="stat-cards" id="sc"></div><h3>استفاده به تفکیک ارائه‌دهنده</h3><div id="sb"></div>';
+  const sc = c.querySelector('#sc');
+  const cards = [['💬', total, 'گفتگو'], ['✉️', totalMsgs, 'پیام'], ['📨', stats.messages, 'پیام این مرورگر']];
+  for (const [ic, n, l] of cards) {
+    const d = document.createElement('div');
+    d.className = 'stat-card';
+    d.innerHTML = '<div class="sc-num">' + n + '</div><div class="sc-label">' + ic + ' ' + l + '</div>';
+    sc.appendChild(d);
   }
-  c.innerHTML =
-    '<div class="stat-cards">' +
-    '<div class="stat-card"><div class="sc-num">' + convos.length + '</div><div class="sc-label">گفتگو</div></div>' +
-    '<div class="stat-card"><div class="sc-num">' + stats.messages + '</div><div class="sc-label">پیام</div></div>' +
-    '<div class="stat-card"><div class="sc-num">' + keys + '</div><div class="sc-label">کلید فعال</div></div>' +
-    '</div>' +
-    '<h3>مصرف به تفکیک ارائه‌دهنده</h3>' +
-    (bars || '<p class="note">هنوز پیامی ثبت نشده.</p>');
+  const sb = c.querySelector('#sb');
+  const entries = Object.entries(stats.byProvider).sort((a, b) => b[1] - a[1]);
+  const max = entries.length ? entries[0][1] : 1;
+  if (!entries.length) sb.innerHTML = '<p class="note">هنوز پیامی ارسال نشده.</p>';
+  for (const [pid, n] of entries) {
+    const row = document.createElement('div');
+    row.className = 'stat-bar';
+    row.innerHTML = '<span class="sb-label"></span><div class="sb-track"><div class="sb-fill" style="width:' + Math.max(4, (n / max) * 100) + '%"></div></div><span class="sb-num">' + n + '</span>';
+    row.querySelector('.sb-label').textContent = (settings.providers[pid] || {}).label || pid;
+    sb.appendChild(row);
+  }
 }
 
 function renderAdminProviders(c) {
-  let rows = '';
+  c.innerHTML = '<h3>🎛 نمایش ارائه‌دهنده‌ها برای مهمان‌ها</h3><p class="note">مهمان‌ها بدون ورود از سایت استفاده می‌کنن، ولی فقط ارائه‌دهنده‌هایی رو می‌بینن که اینجا روشن باشن.</p><div id="pr"></div>';
+  const box = c.querySelector('#pr');
   for (const id of PROVIDER_IDS) {
+    if (id === 'custom') continue;
     const p = settings.providers[id];
-    const vis = settings.providerVisible[id] !== false;
-    rows += '<div class="prov-row">' +
-      '<div class="pr-info"><b>' + escapeHtml(p.label) + '</b>' +
-      '<span class="pr-key">' + (p.apiKey ? '🔑 کلید ثبت شده' : 'بدون کلید') + (p.model ? ' · ' + escapeHtml(p.model) : '') + '</span></div>' +
-      '<label class="switch"><input type="checkbox" data-id="' + id + '" ' + (vis ? 'checked' : '') + '><span class="slider"></span></label>' +
-      '</div>';
+    const row = document.createElement('div');
+    row.className = 'prov-row';
+    row.innerHTML = '<div class="pr-info"><b></b><span class="pr-key"></span></div><label class="switch"><input type="checkbox"><span class="slider"></span></label>';
+    row.querySelector('b').textContent = p.label;
+    row.querySelector('.pr-key').textContent = p.apiKey ? '🔑 کلید ثبت شده' : 'بدون کلید';
+    const chk = row.querySelector('input');
+    chk.checked = settings.providerVisible[id] !== false;
+    chk.onchange = () => { settings.providerVisible[id] = chk.checked; saveSettings(); renderAll(); };
+    box.appendChild(row);
   }
-  c.innerHTML = '<h3>نمایش ارائه‌دهنده‌ها برای مهمان‌ها</h3><p class="note">خاموش کردن یعنی مهمان‌ها اون ارائه‌دهنده رو نمی‌بینن (خودت همیشه همه رو می‌بینی).</p>' + rows;
-  c.querySelectorAll('input[type=checkbox]').forEach((ch) => {
-    ch.onchange = () => { settings.providerVisible[ch.dataset.id] = ch.checked; saveSettings(); renderProviderTabs(); };
-  });
+}
+
+function renderAdminSecurity(c) {
+  c.innerHTML =
+    '<h3>🔑 تغییر مشخصات ورود</h3>' +
+    '<label>ایمیل جدید<input type="email" id="adm-new-email" dir="ltr"></label>' +
+    '<div class="modal-actions"><button class="btn-ghost" id="adm-save-email">ذخیره ایمیل</button></div>' +
+    '<label>رمز فعلی<input type="password" id="adm-cur-pass"></label>' +
+    '<label>رمز جدید<input type="password" id="adm-new-pass"></label>' +
+    '<div class="modal-actions"><button class="btn-ghost" id="adm-save-pass">تغییر رمز</button></div>' +
+    '<div id="adm-sec-msg" class="test-result hidden"></div>' +
+    '<div class="modal-actions"><button class="btn-danger" id="adm-logout">خروج از حساب مدیر</button></div>';
+  $('adm-new-email').value = admin.email;
+  $('adm-save-email').onclick = () => {
+    const email = $('adm-new-email').value.trim().toLowerCase();
+    const msg = $('adm-sec-msg');
+    msg.classList.remove('hidden');
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { msg.className = 'test-result err'; msg.textContent = 'ایمیل معتبر نیست.'; return; }
+    admin.email = email; saveAdmin();
+    msg.className = 'test-result ok'; msg.textContent = '✅ ایمیل ذخیره شد.';
+  };
+  $('adm-save-pass').onclick = async () => {
+    const cur = $('adm-cur-pass').value, nw = $('adm-new-pass').value;
+    const msg = $('adm-sec-msg');
+    msg.classList.remove('hidden');
+    if (await sha256('aichat-admin::' + cur) !== admin.passHash) { msg.className = 'test-result err'; msg.textContent = 'رمز فعلی اشتباهه.'; return; }
+    if (nw.length < 6) { msg.className = 'test-result err'; msg.textContent = 'رمز جدید باید حداقل ۶ کاراکتر باشه.'; return; }
+    admin.passHash = await sha256('aichat-admin::' + nw); saveAdmin();
+    msg.className = 'test-result ok'; msg.textContent = '✅ رمز تغییر کرد.';
+    $('adm-cur-pass').value = ''; $('adm-new-pass').value = '';
+  };
+  $('adm-logout').onclick = () => {
+    sessionStorage.removeItem('aichat.admin.session');
+    closeAdmin(); renderAll();
+  };
 }
 
 function renderAdminData(c) {
   c.innerHTML =
-    '<h3>پشتیبان‌گیری و بازیابی</h3>' +
+    '<h3>💾 بکاپ و داده‌ها</h3>' +
     '<div class="modal-actions">' +
-    '<button id="adm-export" class="btn-ghost">⬇️ خروجی JSON</button>' +
-    '<label class="btn-ghost file-label">⬆️ ورود JSON<input type="file" id="adm-import" accept=".json" class="hidden"></label>' +
+    '<button class="btn-ghost" id="adm-export">⬇️ دانلود بکاپ</button>' +
+    '<label class="btn-ghost file-label" style="flex:1">⬆️ بازیابی بکاپ<input type="file" id="adm-import" accept=".json" class="hidden"></label>' +
     '</div>' +
-    '<h3>حذف</h3>' +
-    '<div class="modal-actions"><button id="adm-clear-convos" class="btn-danger">🗑 حذف همه گفتگوها</button></div>' +
-    '<div id="adm-data-msg" class="test-result hidden"></div>';
+    '<div class="modal-actions">' +
+    '<button class="btn-danger" id="adm-clear-convos">🗑 حذف همه گفتگوها</button>' +
+    '<button class="btn-danger" id="adm-wipe">💥 پاک‌سازی کامل</button>' +
+    '</div>' +
+    '<div id="adm-data-msg" class="test-result hidden"></div>' +
+    '<p class="note">بکاپ شامل تنظیمات، گفتگوها و آمار می‌شه. حساب مدیر توی بکاپ نیست.</p>';
   $('adm-export').onclick = () => {
-    const data = { settings, convos, stats, exportedAt: new Date().toISOString() };
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const data = { settings, convos, stats, exportedAt: Date.now() };
     const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
+    a.href = URL.createObjectURL(new Blob([JSON.stringify(data)], { type: 'application/json' }));
     a.download = 'aichat-backup.json';
     a.click();
     URL.revokeObjectURL(a.href);
   };
   $('adm-import').onchange = (e) => {
-    const f = e.target.files[0]; if (!f) return;
+    const f = e.target.files[0];
+    if (!f) return;
     const r = new FileReader();
     r.onload = () => {
-      const msg = $('adm-data-msg'); msg.classList.remove('hidden', 'ok', 'err');
+      const msg = $('adm-data-msg');
+      msg.classList.remove('hidden');
       try {
         const d = JSON.parse(r.result);
-        if (d.convos) { convos = d.convos; saveConvos(); }
-        if (d.settings) { settings = d.settings; migrateSettings(); }
-        if (d.stats) { stats = d.stats; saveStats(); }
-        msg.classList.add('ok'); msg.textContent = '✅ بازیابی شد.';
-        renderSidebar(); renderChat();
-      } catch { msg.classList.add('err'); msg.textContent = '❌ فایل معتبر نیست.'; }
+        if (d.settings) settings = d.settings;
+        if (d.convos) convos = d.convos;
+        if (d.stats) stats = d.stats;
+        migrateSettings(); saveSettings(); saveConvos(); saveStats();
+        activeConvoId = convos.length ? convos[0].id : null;
+        renderAll(); renderAdminPanel();
+        msg.className = 'test-result ok'; msg.textContent = '✅ بکاپ بازیابی شد.';
+      } catch { msg.className = 'test-result err'; msg.textContent = '❌ فایل معتبر نیست.'; }
     };
     r.readAsText(f);
   };
   $('adm-clear-convos').onclick = () => {
     if (!confirm('همه گفتگوها حذف بشن؟')) return;
-    convos = []; activeConvoId = null; saveConvos();
-    renderSidebar(); renderChat(); renderAdminPanel();
+    convos = []; activeConvoId = null; saveConvos(); renderAll();
+    $('adm-data-msg').className = 'test-result ok';
+    $('adm-data-msg').classList.remove('hidden');
+    $('adm-data-msg').textContent = '✅ همه گفتگوها حذف شدن.';
   };
-}
-
-function renderAdminSecurity(c) {
-  c.innerHTML =
-    '<h3>تغییر ایمیل مدیر</h3>' +
-    '<label>ایمیل فعلی: <b dir="ltr">' + escapeHtml(admin.email) + '</b></label>' +
-    '<div class="key-row"><input type="email" id="adm-new-email" dir="ltr" placeholder="ایمیل جدید"><button id="adm-save-email" class="btn-ghost small">ذخیره</button></div>' +
-    '<h3>تغییر رمز عبور</h3>' +
-    '<label>رمز فعلی<input type="password" id="adm-cur-pass"></label>' +
-    '<label>رمز جدید<input type="password" id="adm-new-pass" placeholder="حداقل ۶ کاراکتر"></label>' +
-    '<div class="modal-actions"><button id="adm-save-pass" class="btn-ghost">ذخیره رمز جدید</button></div>' +
-    '<h3>نشست</h3>' +
-    '<div class="modal-actions"><button id="adm-logout" class="btn-ghost">🚪 خروج از حساب مدیر</button>' +
-    '<button id="adm-wipe" class="btn-danger">💥 حذف کامل همه داده‌ها</button></div>' +
-    '<div id="adm-sec-msg" class="test-result hidden"></div>';
-  $('adm-save-email').onclick = () => {
-    const v = $('adm-new-email').value.trim().toLowerCase();
-    const msg = $('adm-sec-msg'); msg.classList.remove('hidden', 'ok', 'err');
-    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v)) { msg.classList.add('err'); msg.textContent = 'ایمیل معتبر وارد کن.'; return; }
-    admin.email = v; localStorage.setItem(LS_ADMIN, JSON.stringify(admin));
-    msg.classList.add('ok'); msg.textContent = '✅ ایمیل به‌روز شد.'; renderAdminSecurity(c);
-  };
-  $('adm-save-pass').onclick = async () => {
-    const msg = $('adm-sec-msg'); msg.classList.remove('hidden', 'ok', 'err');
-    const curH = await sha256Hex($('adm-cur-pass').value);
-    if (curH !== admin.passHash) { msg.classList.add('err'); msg.textContent = 'رمز فعلی اشتباهه.'; return; }
-    if ($('adm-new-pass').value.length < 6) { msg.classList.add('err'); msg.textContent = 'رمز جدید باید حداقل ۶ کاراکتر باشه.'; return; }
-    admin.passHash = await sha256Hex($('adm-new-pass').value);
-    localStorage.setItem(LS_ADMIN, JSON.stringify(admin));
-    msg.classList.add('ok'); msg.textContent = '✅ رمز عبور عوض شد.';
-  };
-  $('adm-logout').onclick = () => { sessionStorage.removeItem('aichat.admin.session'); closeAdmin(); };
   $('adm-wipe').onclick = () => {
-    if (!confirm('همه‌چیز (گفتگوها، کلیدها، تنظیمات و حساب مدیر) حذف بشه؟ این کار برگشت‌ناپذیره!')) return;
-    for (const k of [LS_SETTINGS, LS_CONVOS, LS_ADMIN, LS_STATS]) localStorage.removeItem(k);
+    if (!confirm('همه داده‌های این مرورگر (تنظیمات، گفتگوها، آمار) پاک بشه؟ حساب مدیر هم حذف می‌شه.')) return;
+    localStorage.removeItem(LS_SETTINGS); localStorage.removeItem(LS_CONVOS); localStorage.removeItem(LS_STATS); localStorage.removeItem(LS_ADMIN);
     sessionStorage.removeItem('aichat.admin.session');
     location.reload();
   };
 }
 
-function escapeHtml(s) { return String(s).replace(/[&<>"']/g, (m) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m])); }
-
 /* ---------- events ---------- */
-function autoresize() { inputEl.style.height = 'auto'; inputEl.style.height = Math.min(inputEl.scrollHeight, 160) + 'px'; }
+function autoresize() {
+  inputEl.style.height = 'auto';
+  inputEl.style.height = Math.min(inputEl.scrollHeight, 170) + 'px';
+}
 
-$('btn-send').onclick = sendMessage;
-$('btn-stop').onclick = stopStream;
-$('btn-new-chat').onclick = () => { newConvo(); document.body.classList.remove('sidebar-open'); };
-$('btn-settings').onclick = openSettings;
-$('btn-admin').onclick = openAdmin;
-$('btn-close-settings').onclick = closeSettings;
-$('btn-close-admin').onclick = closeAdmin;
-$('settings-modal').addEventListener('click', (e) => { if (e.target.id === 'settings-modal') closeSettings(); });
-$('admin-modal').addEventListener('click', (e) => { if (e.target.id === 'admin-modal') closeAdmin(); });
-$('btn-test').onclick = testConnection;
-$('btn-fetch-models').onclick = fetchModels;
-$('btn-smart').onclick = smartConnect;
-$('smart-key').addEventListener('keydown', (e) => { if (e.key === 'Enter') smartConnect(); });
-$('btn-save-settings').onclick = () => { setAsActive(); closeSettings(); };
-$('btn-toggle-key').onclick = () => { $('set-key').type = $('set-key').type === 'password' ? 'text' : 'password'; };
+$('btn-new-chat').onclick = newConvo;
 $('btn-toggle-sidebar').onclick = () => document.body.classList.toggle('sidebar-open');
+$('convo-search').addEventListener('input', (e) => { convoQuery = e.target.value; renderSidebar(); });
+
+$('btn-send').onclick = () => submitUserText(inputEl.value);
+$('btn-stop').onclick = stopStream;
 inputEl.addEventListener('input', autoresize);
 inputEl.addEventListener('keydown', (e) => {
-  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submitUserText(inputEl.value); }
 });
-document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { closeSettings(); closeAdmin(); } });
+
+$('model-switcher').onclick = (e) => {
+  e.stopPropagation();
+  if ($('model-menu').classList.contains('hidden')) openModelMenu();
+  else closeModelMenu();
+};
+document.addEventListener('click', (e) => {
+  if (!e.target.closest('.switcher-wrap')) closeModelMenu();
+});
+
+messagesEl.addEventListener('click', (e) => {
+  const fu = e.target.closest('[data-follow]');
+  if (fu) { submitUserText(fu.dataset.follow); return; }
+  const btn = e.target.closest('[data-act]');
+  if (!btn) return;
+  const wrap = e.target.closest('.msg.assistant');
+  if (!wrap) return;
+  const c = activeConvo();
+  if (!c) return;
+  const m = c.messages[+wrap.dataset.idx];
+  if (!m) return;
+  const act = btn.dataset.act;
+  if (act === 'copy') {
+    navigator.clipboard.writeText(m.content).then(() => {
+      btn.textContent = '✅ کپی شد';
+      setTimeout(() => { btn.textContent = '📋 کپی'; }, 1400);
+    }).catch(() => showError('کپی نشد؛ دستی انتخاب و کپی کن.'));
+  } else if (act === 'regen') {
+    regenerate();
+  } else if (act === 'like' || act === 'dislike') {
+    const v = act === 'like' ? 1 : -1;
+    m.rating = m.rating === v ? 0 : v;
+    saveConvos(); renderChat();
+  }
+});
+
+$('btn-settings').onclick = openSettings;
+$('btn-close-settings').onclick = closeSettings;
+$('settings-modal').addEventListener('click', (e) => { if (e.target === $('settings-modal')) closeSettings(); });
+$('btn-test').onclick = testConnection;
+$('btn-fetch-models').onclick = fetchModels;
+$('btn-save-settings').onclick = saveProviderSettings;
+$('btn-smart').onclick = smartConnect;
+$('smart-key').addEventListener('keydown', (e) => { if (e.key === 'Enter') smartConnect(); });
+$('btn-toggle-key').onclick = () => { const k = $('set-key'); k.type = k.type === 'password' ? 'text' : 'password'; };
+
+$('btn-admin').onclick = openAdmin;
+$('btn-close-admin').onclick = closeAdmin;
+$('admin-modal').addEventListener('click', (e) => { if (e.target === $('admin-modal')) closeAdmin(); });
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') { closeSettings(); closeAdmin(); closeModelMenu(); }
+});
 
 /* ---------- init ---------- */
-if (!isAdmin() && settings.providerVisible[settings.activeProvider] === false) {
-  settings.activeProvider = visibleProviders()[0] || 'openai';
-  saveSettings();
-}
-if (!visibleProviders().includes(editingProvider)) editingProvider = visibleProviders()[0] || 'openai';
-renderProviderTabs();
-renderSidebar();
-renderChat();
+if (!visibleProviders().includes(settings.activeProvider)) settings.activeProvider = 'openai';
+renderAll();
 autoresize();

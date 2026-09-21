@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>چت‌بات هوش مصنوعی</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>✦</text></svg>">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/Vazirmatn-font-face.css">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/styles/github-dark.min.css">
 <link rel="stylesheet" href="styles.css">
@@ -16,13 +17,15 @@
   <!-- سایدبار -->
   <aside id="sidebar">
     <div class="sidebar-head">
-      <div class="logo"><span class="logo-mark">✦</span> چت‌بات هوش مصنوعی</div>
-      <button id="btn-new-chat" class="btn-primary" title="گفتگوی جدید">＋ گفتگوی جدید</button>
+      <button id="btn-new-chat" class="btn-new"><span class="spark">✦</span> گفتگوی جدید</button>
+      <div class="search-wrap">
+        <input id="convo-search" placeholder="جستجوی گفتگوها…">
+      </div>
     </div>
     <div id="convo-list" class="convo-list"></div>
     <div class="sidebar-foot">
-      <button id="btn-settings" class="btn-ghost">⚙️ تنظیمات API</button>
-      <button id="btn-admin" class="btn-ghost">🔐 ورود مدیر</button>
+      <button id="btn-settings" class="foot-btn">⚙️ تنظیمات API</button>
+      <button id="btn-admin" class="foot-btn">🔐 ورود مدیر</button>
       <div class="provider-chip" id="active-provider-chip"></div>
     </div>
   </aside>
@@ -31,10 +34,14 @@
   <!-- ناحیه اصلی -->
   <main id="main">
     <header id="chat-header">
-      <div class="chat-title-wrap">
-        <h1 id="chat-title">گفتگوی جدید</h1>
-        <div class="model-line"><span id="admin-badge" class="badge admin hidden">🛡 مدیر</span><span id="header-provider" class="badge"></span><span id="header-model" class="model-name"></span></div>
+      <span id="admin-badge" class="badge admin hidden">🛡 مدیر</span>
+      <div class="switcher-wrap">
+        <button id="model-switcher" class="model-switcher">
+          <span id="ms-label"></span><span class="chev">▾</span>
+        </button>
+        <div id="model-menu" class="model-menu hidden"></div>
       </div>
+      <span class="header-spacer"></span>
     </header>
 
     <div id="messages" class="messages"></div>
@@ -42,14 +49,15 @@
     <div id="welcome" class="welcome">
       <div class="welcome-mark">✦</div>
       <h2>سلام! 👋</h2>
-      <p>به چند AI مختلف وصلم. از تنظیمات، ارائه‌دهنده و کلید API رو انتخاب کن و شروع کن به حرف زدن.</p>
+      <p class="welcome-sub">امروز چطور کمکت کنم؟</p>
+      <div class="suggest-grid" id="suggest-grid"></div>
       <div class="welcome-providers" id="welcome-providers"></div>
     </div>
 
     <div class="composer-wrap">
       <div id="error-bar" class="error-bar hidden"></div>
       <div class="composer">
-        <textarea id="input" rows="1" placeholder="پیامت رو بنویس… (Enter برای ارسال، Shift+Enter برای خط جدید)"></textarea>
+        <textarea id="input" rows="1" placeholder="پیام بده… (Enter برای ارسال)"></textarea>
         <button id="btn-send" class="btn-send" title="ارسال">➤</button>
         <button id="btn-stop" class="btn-stop hidden" title="توقف">■</button>
       </div>
@@ -117,8 +125,6 @@
   </div>
 </div>
 
-<script src="app.js"></script>
-
 <!-- مودال مدیریت -->
 <div id="admin-modal" class="modal hidden">
   <div class="modal-card wide">
@@ -135,5 +141,7 @@
     </div>
   </div>
 </div>
+
+<script src="app.js"></script>
 </body>
 </html>
