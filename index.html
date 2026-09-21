@@ -22,6 +22,7 @@
     <div id="convo-list" class="convo-list"></div>
     <div class="sidebar-foot">
       <button id="btn-settings" class="btn-ghost">⚙️ تنظیمات API</button>
+      <button id="btn-admin" class="btn-ghost">🔐 ورود مدیر</button>
       <div class="provider-chip" id="active-provider-chip"></div>
     </div>
   </aside>
@@ -32,7 +33,7 @@
     <header id="chat-header">
       <div class="chat-title-wrap">
         <h1 id="chat-title">گفتگوی جدید</h1>
-        <div class="model-line"><span id="header-provider" class="badge"></span><span id="header-model" class="model-name"></span></div>
+        <div class="model-line"><span id="admin-badge" class="badge admin hidden">🛡 مدیر</span><span id="header-provider" class="badge"></span><span id="header-model" class="model-name"></span></div>
       </div>
     </header>
 
@@ -66,6 +67,27 @@
     </div>
     <div class="provider-tabs" id="provider-tabs"></div>
     <div class="modal-body">
+      <div class="smart-box">
+        <div class="smart-title">⚡ اتصال هوشمند</div>
+        <p class="smart-desc">کلید API رو اینجا بچسبون؛ خودش ارائه‌دهنده و مدل‌ها رو تشخیص می‌ده.</p>
+        <div class="key-row">
+          <input type="text" id="smart-key" dir="ltr" placeholder="کلید API رو اینجا بچسبون…">
+          <button id="btn-smart" class="btn-primary small">تشخیص</button>
+        </div>
+        <div id="smart-result" class="test-result hidden"></div>
+      </div>
+      <details class="free-guide">
+        <summary>🎁 ۶ API رایگان و قوی (بدون کارت بانکی)</summary>
+        <ol>
+          <li><a href="https://aistudio.google.com" target="_blank" rel="noopener">Google AI Studio (Gemini)</a> — کلید رایگان؛ مدل‌های Flash حدود ۱۵۰۰ درخواست در روز</li>
+          <li><a href="https://console.groq.com" target="_blank" rel="noopener">Groq</a> — خیلی سریع؛ سهمیه روزانه رایگان برای مدل‌های Llama و Qwen</li>
+          <li><a href="https://cloud.cerebras.ai" target="_blank" rel="noopener">Cerebras</a> — حدود ۱ میلیون توکن در روز رایگان؛ سریع‌ترین استنتاج</li>
+          <li><a href="https://console.mistral.ai" target="_blank" rel="noopener">Mistral</a> — پلن Experiment حدود ۱ میلیارد توکن در ماه</li>
+          <li><a href="https://openrouter.ai" target="_blank" rel="noopener">OpenRouter</a> — مدل‌های رایگان <span dir="ltr">:free</span>؛ حدود ۵۰ درخواست در روز</li>
+          <li><a href="https://api.together.ai" target="_blank" rel="noopener">Together AI</a> — اعتبار رایگان هنگام ثبت‌نام</li>
+        </ol>
+        <p class="note">کلید رو از یکی از این سایت‌ها بگیر و بالا توی «اتصال هوشمند» بچسبون.</p>
+      </details>
       <label>نام ارائه‌دهنده
         <input type="text" id="set-name" placeholder="مثلاً OpenAI">
       </label>
@@ -96,5 +118,22 @@
 </div>
 
 <script src="app.js"></script>
+
+<!-- مودال مدیریت -->
+<div id="admin-modal" class="modal hidden">
+  <div class="modal-card wide">
+    <div class="modal-head">
+      <h2 id="admin-title">🔐 مدیریت</h2>
+      <button id="btn-close-admin" class="btn-icon">✕</button>
+    </div>
+    <div class="modal-body">
+      <div id="admin-auth"></div>
+      <div id="admin-panel" class="hidden">
+        <div class="provider-tabs" id="admin-tabs"></div>
+        <div id="admin-content" class="admin-content"></div>
+      </div>
+    </div>
+  </div>
+</div>
 </body>
 </html>
