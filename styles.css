@@ -680,3 +680,15 @@ html[data-theme="chatgpt"] .theme-pop{box-shadow:0 16px 48px rgba(0,0,0,.16)}
 html[data-theme="chatgpt"] .msg.user .bubble{background:#ececec;border-color:transparent}
 html[data-theme="chatgpt"] .a-chip{background:#fff}
 html[data-theme="chatgpt"] .record-bar{background:#fff}
+
+/* v6.2: کامپوزر به سبک ChatGPT — آیکون‌های خطی + دکمه صوتی/ارسال */
+.icon-btn.big svg{width:25px;height:25px;display:block}
+.btn-send .ic-voice{width:21px;height:21px;display:block}
+.btn-send .ic-arrow{width:21px;height:21px;display:none}
+.composer.has-text .btn-send .ic-arrow{display:block}
+.composer.has-text .btn-send .ic-voice{display:none}
+.btn-send{transform:none}
+.btn-send:hover{transform:scale(1.08)}
+html[data-theme="chatgpt"] .icon-btn.big{color:#0f0f0f}
+html[data-theme="chatgpt"] .icon-btn.big:hover{background:rgba(0,0,0,.06);color:#0f0f0f}
+html[data-theme="chatgpt"] .btn-mic.listening{color:#2b7fff}

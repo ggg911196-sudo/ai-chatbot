@@ -508,7 +508,7 @@ async function submitUserText(text) {
   }
   c.provider = settings.activeProvider; c.model = cfg.model;
   hideError();
-  inputEl.value = ''; autoresize();
+  inputEl.value = ''; autoresize(); refreshComposerState();
 
   let fullText = text;
   for (const a of attachments) {
@@ -1135,6 +1135,7 @@ function renderAttachChips() {
     chip.querySelector('.a-x').onclick = () => { attachments = attachments.filter((x) => x.id !== a.id); renderAttachChips(); };
     box.appendChild(chip);
   }
+  refreshComposerState();
 }
 /* پیام‌های API: متن + تصویر (vision) */
 function toApiMessages(c) {
@@ -1292,7 +1293,15 @@ $('btn-search-toggle').onclick = () => {
 $('btn-guide').onclick = () => { openSettings(); const d = document.querySelector('details.free-guide'); if (d) d.open = true; };
 $('convo-search').addEventListener('input', (e) => { convoQuery = e.target.value; renderSidebar(); });
 
-$('btn-send').onclick = () => submitUserText(inputEl.value);
+const refreshComposerState = () => {
+  const has = inputEl.value.trim().length > 0 || attachments.length > 0;
+  document.querySelector('.composer').classList.toggle('has-text', has);
+  $('btn-send').title = has ? 'ارسال' : 'گفتگوی صوتی (ضبط صدا)';
+};
+$('btn-send').onclick = () => {
+  if (inputEl.value.trim() || attachments.length) submitUserText(inputEl.value);
+  else startRecording();
+};
 $('btn-stop').onclick = stopStream;
 $('btn-mic').onclick = toggleDictation;
 $('btn-export').onclick = exportChat;
@@ -1314,7 +1323,7 @@ $('fi-image').addEventListener('change', (e) => { addFiles(e.target.files, 'imag
 $('fi-camera').addEventListener('change', (e) => { addFiles(e.target.files, 'camera'); e.target.value = ''; });
 $('fi-video').addEventListener('change', (e) => { addFiles(e.target.files, 'video'); e.target.value = ''; });
 $('btn-record-stop').onclick = () => { try { if (mediaRecorder && mediaRecorder.state !== 'inactive') mediaRecorder.stop(); } catch {} };
-inputEl.addEventListener('input', autoresize);
+inputEl.addEventListener('input', () => { autoresize(); refreshComposerState(); });
 inputEl.addEventListener('keydown', (e) => {
   if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submitUserText(inputEl.value); }
 });
