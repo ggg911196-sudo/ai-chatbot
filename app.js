@@ -769,12 +769,24 @@ async function smartConnect() {
   box.className = 'test-result ok';
   box.textContent = '⏳ در حال تشخیص…';
   try {
-    let pid = null;
+    let pid = null, preProbed = null;
     for (const [re, id] of KEY_HINTS) if (re.test(key)) { pid = id; break; }
     if (!pid) {
-      box.className = 'test-result err';
-      box.textContent = '❌ این کلید رو نشناختم. از تب‌های پایین، ارائه‌دهنده رو دستی انتخاب کن و کلید رو اونجا وارد کن.';
-      return;
+      box.textContent = '⏳ پیشوند کلید ناشناسه؛ دارم با همه ارائه‌دهنده‌ها امتحانش می‌کنم…';
+      const order = ['openai', 'groq', 'gemini', 'cerebras', 'mistral', 'together', 'openrouter', 'deepseek', 'xai'];
+      const attempts = await Promise.allSettled(order.map(async (id) => {
+        const ids = await probeModels(id, PROVIDER_PRESETS[id].baseUrl, key);
+        if (ids && ids.length) return { id, ids };
+        throw new Error('empty');
+      }));
+      for (let i = 0; i < order.length; i++) {
+        if (attempts[i].status === 'fulfilled') { pid = attempts[i].value.id; preProbed = attempts[i].value.ids; break; }
+      }
+      if (!pid) {
+        box.className = 'test-result err';
+        box.textContent = '❌ این کلید با هیچ‌کدوم از ارائه‌دهنده‌ها جواب نداد. مطمئن شو کلید رو کامل کپی کردی؛ اگه باز نشد از تب‌های پایین دستی وارد کن.';
+        return;
+      }
     }
     const p = settings.providers[pid];
     p.apiKey = key;
@@ -783,7 +795,7 @@ async function smartConnect() {
     saveSettings();
     let modelCount = 0, chosen = p.model;
     try {
-      const ids = await probeModels(pid, p.baseUrl, key);
+      const ids = preProbed || await probeModels(pid, p.baseUrl, key);
       if (ids.length) {
         p.modelsList = ids; modelCount = ids.length;
         const preset = PROVIDER_PRESETS[pid].models[0];
