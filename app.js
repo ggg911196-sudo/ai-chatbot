@@ -73,6 +73,7 @@ function providerLogo(id) {
 
 /* تم‌های رنگی */
 const THEMES = [
+  { id: 'chatgpt',  name: 'چت‌جی‌پی‌تی', c: ['#2b7fff', '#ffffff'] },
   { id: 'midnight', name: 'نیمه‌شب', c: ['#8b5cf6', '#080a10'] },
   { id: 'ocean',    name: 'اقیانوس',  c: ['#0ea5e9', '#04121f'] },
   { id: 'sunset',   name: 'غروب',    c: ['#fb7185', '#160a12'] },
@@ -81,7 +82,7 @@ const THEMES = [
   { id: 'light',    name: 'روشن',    c: ['#7c3aed', '#eef0f4'] },
 ];
 const LS_THEME = 'aichat.theme.v1';
-function currentTheme() { try { return localStorage.getItem(LS_THEME) || 'midnight'; } catch { return 'midnight'; } }
+function currentTheme() { try { const v = localStorage.getItem(LS_THEME); return (!v || v === 'midnight') ? 'chatgpt' : v; } catch { return 'chatgpt'; } }
 function setTheme(id) {
   document.documentElement.dataset.theme = id;
   try { localStorage.setItem(LS_THEME, id); } catch {}
@@ -248,13 +249,20 @@ function renderSidebar() {
   } else if (convoQuery.trim()) {
     for (const c of items) list.appendChild(convoEl(c));
   } else {
+    const pinned = items.filter((c) => c.pinned);
+    if (pinned.length) {
+      const gl = document.createElement('div');
+      gl.className = 'group-label'; gl.textContent = '📌 سنجاق‌شده';
+      list.appendChild(gl);
+      for (const c of pinned) list.appendChild(convoEl(c));
+    }
     const groups = {};
-    for (const c of items) { const g = groupLabel(c.updatedAt); (groups[g] = groups[g] || []).push(c); }
+    for (const c of items) { if (c.pinned) continue; const g = groupLabel(c.updatedAt); (groups[g] = groups[g] || []).push(c); }
+    const gl2 = document.createElement('div');
+    gl2.className = 'group-label'; gl2.textContent = '🕘 گفتگوهای اخیر';
+    list.appendChild(gl2);
     for (const g of ['امروز', 'دیروز', '۷ روز گذشته', 'قدیمی‌تر']) {
       if (!groups[g]) continue;
-      const gl = document.createElement('div');
-      gl.className = 'group-label'; gl.textContent = g;
-      list.appendChild(gl);
       for (const c of groups[g]) list.appendChild(convoEl(c));
     }
   }
@@ -266,17 +274,28 @@ function renderSidebar() {
   ct.innerHTML = 'متصل به <b></b>';
   ct.querySelector('b').textContent = p.label;
   chipEl.appendChild(ct);
-  $('btn-admin').textContent = isAdmin() ? '🛡 پنل مدیر' : '🔐 ورود مدیر';
+  const abBtn = $('btn-admin');
+  const abSpan = abBtn.querySelector('span');
+  if (abSpan) { abBtn.childNodes[0].textContent = isAdmin() ? '🛡' : '🔐'; abSpan.textContent = isAdmin() ? 'پنل مدیر' : 'ورود مدیر'; }
+  else abBtn.textContent = isAdmin() ? '🛡 پنل مدیر' : '🔐 ورود مدیر';
   $('admin-badge').classList.toggle('hidden', !isAdmin());
   renderMsLabel();
 }
 
+function togglePin(id) {
+  const c = getConvo(id);
+  if (!c) return;
+  c.pinned = !c.pinned;
+  saveConvos(); renderSidebar();
+}
+
 function convoEl(c) {
   const d = document.createElement('div');
-  d.className = 'convo' + (c.id === activeConvoId ? ' active' : '');
-  d.innerHTML = '<span class="t"></span><span class="convo-actions"><button class="icon-btn rn" title="تغییر نام">✏️</button><button class="icon-btn del" title="حذف">🗑</button></span>';
+  d.className = 'convo' + (c.id === activeConvoId ? ' active' : '') + (c.pinned ? ' pinned' : '');
+  d.innerHTML = '<span class="t"></span><span class="convo-actions"><button class="icon-btn pin' + (c.pinned ? ' on' : '') + '" title="سنجاق">📌</button><button class="icon-btn rn" title="تغییر نام">✏️</button><button class="icon-btn del" title="حذف">🗑</button></span>';
   d.querySelector('.t').textContent = c.title;
   d.onclick = () => setActiveConvo(c.id);
+  d.querySelector('.pin').onclick = (e) => { e.stopPropagation(); togglePin(c.id); };
   d.querySelector('.del').onclick = (e) => { e.stopPropagation(); if (confirm('این گفتگو حذف بشه؟')) deleteConvo(c.id); };
   d.querySelector('.rn').onclick = (e) => { e.stopPropagation(); startRename(c.id, d); };
   return d;
@@ -408,7 +427,7 @@ function renderSuggestions() {
   g.dataset.done = '1';
   for (const [ic, tx] of SUGGESTIONS) {
     const card = document.createElement('button');
-    card.className = 'suggest-card';
+    card.className = 'suggest-row';
     card.innerHTML = '<span class="ic"></span><span class="tx"></span>';
     card.querySelector('.ic').textContent = ic;
     card.querySelector('.tx').textContent = tx;
@@ -1252,7 +1271,14 @@ function autoresize() {
 }
 
 $('btn-new-chat').onclick = newConvo;
+$('btn-new-chat-top').onclick = newConvo;
 $('btn-toggle-sidebar').onclick = () => document.body.classList.toggle('sidebar-open');
+$('btn-search-toggle').onclick = () => {
+  const w = $('search-wrap');
+  w.classList.toggle('hidden');
+  if (!w.classList.contains('hidden')) $('convo-search').focus();
+};
+$('btn-guide').onclick = () => { openSettings(); const d = document.querySelector('details.free-guide'); if (d) d.open = true; };
 $('convo-search').addEventListener('input', (e) => { convoQuery = e.target.value; renderSidebar(); });
 
 $('btn-send').onclick = () => submitUserText(inputEl.value);

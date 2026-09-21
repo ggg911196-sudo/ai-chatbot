@@ -15,30 +15,35 @@
 </head>
 <body>
 <div id="app">
-  <!-- سایدبار -->
+  <!-- دراور (به سبک اپ ChatGPT) -->
   <aside id="sidebar">
-    <div class="sidebar-head">
-      <button id="btn-new-chat" class="btn-new"><span class="spark">✦</span> گفتگوی جدید</button>
-      <div class="search-wrap">
-        <input id="convo-search" placeholder="جستجوی گفتگوها…">
-      </div>
+    <div class="drawer-head">
+      <span class="drawer-title">✦ چت‌بات</span>
+      <button id="btn-search-toggle" class="icon-btn big" title="جستجوی گفتگوها">🔍</button>
     </div>
-    <div id="convo-list" class="convo-list"></div>
-    <div class="sidebar-foot">
-      <button id="btn-settings" class="foot-btn">⚙️ تنظیمات API</button>
-      <button id="btn-admin" class="foot-btn">🔐 ورود مدیر</button>
+    <div class="search-wrap hidden" id="search-wrap">
+      <input id="convo-search" placeholder="جستجوی گفتگوها…">
+    </div>
+    <nav class="drawer-nav">
+      <button id="btn-settings" class="nav-btn">⚙️<span>تنظیمات API</span></button>
+      <button id="btn-guide" class="nav-btn">🎁<span>راهنمای API رایگان</span></button>
       <div class="theme-wrap">
-        <button id="btn-theme" class="foot-btn">🎨 تم رنگی</button>
+        <button id="btn-theme" class="nav-btn">🎨<span>تم رنگی</span></button>
         <div id="theme-pop" class="theme-pop hidden"></div>
       </div>
+      <button id="btn-admin" class="nav-btn">🔐<span>ورود مدیر</span></button>
+    </nav>
+    <div id="convo-list" class="convo-list"></div>
+    <div class="drawer-foot">
       <div class="provider-chip" id="active-provider-chip"></div>
+      <button id="btn-new-chat" class="btn-new-chat">💬 گفتگوی جدید</button>
     </div>
   </aside>
-  <button id="btn-toggle-sidebar" class="fab-sidebar" title="منو">☰</button>
 
   <!-- ناحیه اصلی -->
   <main id="main">
     <header id="chat-header">
+      <button id="btn-toggle-sidebar" class="icon-btn big" title="منو">☰</button>
       <span id="admin-badge" class="badge admin hidden">🛡 مدیر</span>
       <div class="switcher-wrap">
         <button id="model-switcher" class="model-switcher">
@@ -48,6 +53,7 @@
       </div>
       <span class="header-spacer"></span>
       <button id="btn-export" class="icon-btn" title="دانلود گفتگو (Markdown)">📥</button>
+      <button id="btn-new-chat-top" class="icon-btn" title="گفتگوی جدید">✏️</button>
     </header>
 
     <div id="messages" class="messages"></div>
@@ -56,7 +62,7 @@
       <div class="welcome-mark">✦</div>
       <h2>سلام! 👋</h2>
       <p class="welcome-sub">امروز چطور کمکت کنم؟</p>
-      <div class="suggest-grid" id="suggest-grid"></div>
+      <div class="suggest-rows" id="suggest-grid"></div>
       <div class="welcome-providers" id="welcome-providers"></div>
     </div>
 
