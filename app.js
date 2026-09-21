@@ -160,7 +160,18 @@ function migrateSettings() {
 }
 function loadJSON(k, fb) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : fb; } catch { return fb; } }
 function saveSettings() { localStorage.setItem(LS_SETTINGS, JSON.stringify(settings)); }
-function saveConvos() { localStorage.setItem(LS_CONVOS, JSON.stringify(convos)); }
+function saveConvos() {
+  try {
+    const slim = convos.map((c) => ({
+      ...c,
+      messages: c.messages.map((m) => ({
+        ...m,
+        attachments: (m.attachments || []).map((a) => ({ id: a.id, kind: a.kind, name: a.name, mime: a.mime, size: a.size, text: a.text, transcribed: a.transcribed })),
+      })),
+    }));
+    localStorage.setItem(LS_CONVOS, JSON.stringify(slim));
+  } catch {}
+}
 function saveStats() { localStorage.setItem(LS_STATS, JSON.stringify(stats)); }
 function activeProviderCfg() { return settings.providers[settings.activeProvider]; }
 function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 8); }
@@ -321,7 +332,35 @@ function buildUserEl(m) {
   wrap.className = 'msg user';
   const b = document.createElement('div');
   b.className = 'bubble';
-  b.textContent = m.content;
+  if (m.attachments && m.attachments.length) {
+    const row = document.createElement('div');
+    row.className = 'att-row';
+    for (const a of m.attachments) {
+      const src = a.dataUrl || a.frameUrl;
+      if ((a.kind === 'image' || a.kind === 'video') && src) {
+        const img = document.createElement('img');
+        img.className = 'att-img'; img.src = src; img.alt = a.name || '';
+        row.appendChild(img);
+      } else if (a.kind === 'audio' && a.blob) {
+        const tag = document.createElement('span');
+        tag.className = 'att-tag';
+        const au = document.createElement('audio');
+        au.controls = true;
+        try { au.src = URL.createObjectURL(a.blob); } catch {}
+        tag.appendChild(au);
+        row.appendChild(tag);
+      } else {
+        const tag = document.createElement('span');
+        tag.className = 'att-tag';
+        tag.textContent = (a.kind === 'text' ? '📄 ' : a.kind === 'audio' ? '🎙️ ' : a.kind === 'video' ? '🎥 ' : '📎 ') + (a.name || 'فایل');
+        row.appendChild(tag);
+      }
+    }
+    b.appendChild(row);
+  }
+  const t = document.createElement('div');
+  t.textContent = m.content;
+  b.appendChild(t);
   wrap.appendChild(b);
   return wrap;
 }
@@ -343,6 +382,7 @@ function buildAssistantEl(m, idx, isLast) {
   actions.className = 'msg-actions';
   actions.innerHTML =
     '<button class="act-btn" data-act="copy">📋 کپی</button>' +
+    '<button class="act-btn" data-act="speak">🔊 بخون</button>' +
     '<button class="act-btn" data-act="regen">🔄 تلاش مجدد</button>' +
     '<button class="act-btn' + (m.rating === 1 ? ' on' : '') + '" data-act="like">👍</button>' +
     '<button class="act-btn' + (m.rating === -1 ? ' on' : '') + '" data-act="dislike">👎</button>';
@@ -437,7 +477,7 @@ function bumpStats(pid, n) { stats.messages += n; stats.byProvider[pid] = (stats
 
 async function submitUserText(text) {
   text = (text || '').trim();
-  if (!text || aborter) return;
+  if ((!text && !attachments.length) || aborter) return;
   const cfg = activeProviderCfg();
   if (!cfg.apiKey) { showError('اول باید کلید API رو وارد کنی. از «اتصال هوشمند» توی تنظیمات استفاده کن — خودش تشخیص می‌ده. ⚡'); openSettings(); setTimeout(() => $('smart-key').focus(), 300); return; }
   if (!cfg.model) { showError('مدل انتخاب نشده. از سوییچر بالای صفحه یه مدل انتخاب کن.'); return; }
@@ -450,7 +490,28 @@ async function submitUserText(text) {
   c.provider = settings.activeProvider; c.model = cfg.model;
   hideError();
   inputEl.value = ''; autoresize();
-  c.messages.push({ role: 'user', content: text });
+
+  let fullText = text;
+  for (const a of attachments) {
+    if (a.kind === 'text' && a.text) {
+      fullText += '\n\n📄 **محتوای فایل «' + a.name + '»:**\n```\n' + a.text.slice(0, 15000) + '\n```';
+    } else if (a.kind === 'audio' && a.transcribed) {
+      fullText += '\n\n🎙️ **رونویسی صوت:**\n' + a.transcribed;
+    } else if (a.kind === 'audio') {
+      fullText += '\n\n🎙️ [فایل صوتی پیوست شد: ' + a.name + ']';
+    } else if (a.kind === 'video') {
+      fullText += a.frameUrl
+        ? '\n\n🎥 [ویدیو پیوست شد: ' + a.name + ' — یک فریم از ویدیو هم برای مدل فرستاده شد]'
+        : '\n\n🎥 [ویدیو پیوست شد: ' + a.name + ']';
+    } else if (a.kind === 'image') {
+      if (!text) fullText += 'این تصویر رو ببین و توضیح بده.';
+    } else {
+      fullText += '\n\n📎 [فایل پیوست شد: ' + a.name + ']';
+    }
+  }
+  const msgAtts = attachments.map((a) => ({ id: a.id, kind: a.kind, name: a.name, mime: a.mime, size: a.size, dataUrl: a.dataUrl, frameUrl: a.frameUrl, blob: a.blob, text: a.text, transcribed: a.transcribed }));
+  attachments = []; renderAttachChips();
+  c.messages.push({ role: 'user', content: fullText.trim(), attachments: msgAtts });
   bumpStats(c.provider, 1);
   saveConvos();
   renderAll();
@@ -473,7 +534,7 @@ async function runAssistant(c) {
   let full = '';
   let lastRender = 0;
   try {
-    await streamChat(c.messages.map((m) => ({ role: m.role, content: m.content })), cfg, (tok) => {
+    await streamChat(toApiMessages(c), cfg, (tok) => {
       full += tok;
       const now = Date.now();
       if (now - lastRender > 110) {
@@ -942,6 +1003,248 @@ function renderAdminData(c) {
   };
 }
 
+/* ============ v5: پیوست‌ها، گفتاربه‌متن، ضبط صدا، TTS، خروجی ============ */
+let attachments = [];
+const TEXT_EXTS = ['txt', 'md', 'markdown', 'js', 'ts', 'jsx', 'tsx', 'py', 'java', 'c', 'cpp', 'h', 'hpp', 'cs', 'go', 'rs', 'php', 'rb', 'swift', 'kt', 'html', 'css', 'scss', 'json', 'xml', 'yaml', 'yml', 'toml', 'ini', 'cfg', 'csv', 'log', 'sql', 'sh', 'vue', 'env'];
+function isTextFile(f) {
+  if (f.type && (f.type.startsWith('text/') || f.type === 'application/json' || f.type === 'application/xml' || f.type === 'application/javascript')) return true;
+  const ext = (f.name.split('.').pop() || '').toLowerCase();
+  return TEXT_EXTS.includes(ext);
+}
+function fileToDataUrl(file, maxDim) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      try {
+        const scale = Math.min(1, (maxDim || 1024) / Math.max(img.width || 1, img.height || 1));
+        const cv = document.createElement('canvas');
+        cv.width = Math.max(1, Math.round(img.width * scale));
+        cv.height = Math.max(1, Math.round(img.height * scale));
+        cv.getContext('2d').drawImage(img, 0, 0, cv.width, cv.height);
+        URL.revokeObjectURL(url);
+        resolve(cv.toDataURL('image/jpeg', 0.85));
+      } catch (e) { URL.revokeObjectURL(url); reject(e); }
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('img')); };
+    img.src = url;
+  });
+}
+function readTextFile(file, maxChars) {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(String(r.result || '').slice(0, maxChars || 30000));
+    r.onerror = () => reject(new Error('read'));
+    r.readAsText(file);
+  });
+}
+function extractVideoFrame(file) {
+  return new Promise((resolve) => {
+    const url = URL.createObjectURL(file);
+    const v = document.createElement('video');
+    v.muted = true; v.playsInline = true; v.preload = 'auto';
+    const done = (dataUrl) => { URL.revokeObjectURL(url); resolve(dataUrl || null); };
+    v.onloadeddata = () => { try { v.currentTime = Math.min(0.6, (v.duration || 1) / 2); } catch { done(null); } };
+    v.onseeked = () => {
+      try {
+        const scale = Math.min(1, 768 / Math.max(v.videoWidth || 1, v.videoHeight || 1));
+        const cv = document.createElement('canvas');
+        cv.width = Math.max(1, Math.round(v.videoWidth * scale));
+        cv.height = Math.max(1, Math.round(v.videoHeight * scale));
+        cv.getContext('2d').drawImage(v, 0, 0, cv.width, cv.height);
+        done(cv.toDataURL('image/jpeg', 0.8));
+      } catch { done(null); }
+    };
+    v.onerror = () => done(null);
+    setTimeout(() => done(null), 9000);
+    v.src = url;
+  });
+}
+async function addFiles(fileList, source) {
+  const files = Array.from(fileList || []);
+  for (const f of files) {
+    if (attachments.length >= 6) { showError('حداکثر ۶ پیوست در هر پیام.'); break; }
+    if (f.size > 12 * 1024 * 1024) { showError('«' + f.name + '» بزرگ‌تر از ۱۲ مگابایته و اضافه نشد.'); continue; }
+    const att = { id: uid(), name: f.name, mime: f.type || '', size: f.size };
+    try {
+      if (source === 'video' || (f.type || '').startsWith('video/')) {
+        att.kind = 'video';
+        att.frameUrl = await extractVideoFrame(f);
+      } else if ((f.type || '').startsWith('image/')) {
+        att.kind = 'image';
+        att.dataUrl = await fileToDataUrl(f, 1024);
+      } else if ((f.type || '').startsWith('audio/')) {
+        att.kind = 'audio'; att.blob = f;
+      } else if (isTextFile(f)) {
+        att.kind = 'text';
+        att.text = await readTextFile(f, 30000);
+      } else {
+        att.kind = 'file';
+      }
+      attachments.push(att);
+    } catch { showError('خواندن «' + f.name + '» ممکن نشد.'); }
+  }
+  renderAttachChips();
+}
+function renderAttachChips() {
+  const box = $('attach-chips');
+  box.innerHTML = '';
+  box.classList.toggle('hidden', !attachments.length);
+  for (const a of attachments) {
+    const chip = document.createElement('div');
+    chip.className = 'a-chip';
+    let visual = '';
+    if (a.kind === 'image' && a.dataUrl) visual = '<img class="thumb" alt="">';
+    else if (a.kind === 'video' && a.frameUrl) visual = '<img class="thumb" alt="">';
+    else visual = '<span class="a-ico">' + (a.kind === 'audio' ? '🎙️' : a.kind === 'text' ? '📄' : a.kind === 'video' ? '🎥' : '📎') + '</span>';
+    const badge = a.transcribed ? '<span class="a-ok">✓ رونویسی شد</span>' : (a.transcribing ? '<span class="a-ok">⏳ رونویسی…</span>' : '');
+    chip.innerHTML = visual + '<span class="a-name"></span>' + badge + '<button class="a-x" title="حذف">✕</button>';
+    const im = chip.querySelector('img.thumb');
+    if (im) im.src = a.dataUrl || a.frameUrl;
+    chip.querySelector('.a-name').textContent = a.name;
+    chip.querySelector('.a-x').onclick = () => { attachments = attachments.filter((x) => x.id !== a.id); renderAttachChips(); };
+    box.appendChild(chip);
+  }
+}
+/* پیام‌های API: متن + تصویر (vision) */
+function toApiMessages(c) {
+  return c.messages.map((m) => {
+    if (m.role === 'user' && m.attachments && m.attachments.length) {
+      const parts = [{ type: 'text', text: m.content || '' }];
+      for (const a of m.attachments) {
+        const url = (a.dataUrl && a.dataUrl.indexOf('data:') === 0) ? a.dataUrl : (a.frameUrl || null);
+        if (url && (a.kind === 'image' || a.kind === 'video')) parts.push({ type: 'image_url', image_url: { url } });
+      }
+      if (parts.length > 1) return { role: 'user', content: parts };
+    }
+    return { role: m.role, content: m.content };
+  });
+}
+/* ---------- ضبط صدا + رونویسی Whisper ---------- */
+let mediaRecorder = null, recordChunks = [], recordTimer = null, recordStart = 0;
+async function startRecording() {
+  if (!navigator.mediaDevices || !window.MediaRecorder) { showError('ضبط صدا در این مرورگر پشتیبانی نمی‌شه.'); return; }
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    recordChunks = [];
+    mediaRecorder = new MediaRecorder(stream);
+    mediaRecorder.ondataavailable = (e) => { if (e.data && e.data.size) recordChunks.push(e.data); };
+    mediaRecorder.onstop = onRecordStop;
+    mediaRecorder.start();
+    recordStart = Date.now();
+    $('record-time').textContent = '0:00';
+    $('record-bar').classList.remove('hidden');
+    recordTimer = setInterval(() => {
+      const s = Math.floor((Date.now() - recordStart) / 1000);
+      $('record-time').textContent = Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
+    }, 500);
+  } catch { showError('دسترسی به میکروفن داده نشد. از تنظیمات مرورگر اجازه بده.'); }
+}
+function stopRecordingUI() {
+  if (recordTimer) { clearInterval(recordTimer); recordTimer = null; }
+  $('record-bar').classList.add('hidden');
+  try {
+    if (mediaRecorder && mediaRecorder.state !== 'inactive') mediaRecorder.stop();
+    if (mediaRecorder && mediaRecorder.stream) mediaRecorder.stream.getTracks().forEach((t) => t.stop());
+  } catch {}
+}
+async function onRecordStop() {
+  const mime = (mediaRecorder && mediaRecorder.mimeType) || 'audio/webm';
+  const blob = new Blob(recordChunks, { type: mime });
+  stopRecordingUI();
+  mediaRecorder = null;
+  if (!blob.size) return;
+  const att = { id: uid(), kind: 'audio', name: 'voice-' + new Date().toTimeString().slice(0, 8).replace(/:/g, '') + '.webm', mime: blob.type, size: blob.size, blob, transcribing: true };
+  attachments.push(att);
+  renderAttachChips();
+  try {
+    const t = await transcribeWhisper(blob);
+    if (t) att.transcribed = t;
+  } catch {}
+  att.transcribing = false;
+  renderAttachChips();
+}
+async function transcribeWhisper(blob) {
+  const key = (settings.providers.openai || {}).apiKey;
+  if (!key) return null;
+  const fd = new FormData();
+  fd.append('file', blob, 'voice.webm');
+  fd.append('model', 'whisper-1');
+  fd.append('language', 'fa');
+  const res = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+    method: 'POST',
+    headers: { Authorization: 'Bearer ' + cleanKey(key) },
+    body: fd,
+  });
+  if (!res.ok) return null;
+  const j = await res.json().catch(() => ({}));
+  return (j.text || '').trim() || null;
+}
+/* ---------- گفتار به متن زنده (رایگان، بدون کلید) ---------- */
+let recog = null, dictating = false;
+function toggleDictation() {
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SR) { showError('مرورگرت گفتار به متن رو پشتیبانی نمی‌کنه. کروم یا اج رو امتحان کن.'); return; }
+  if (dictating) { try { recog.stop(); } catch {} return; }
+  recog = new SR();
+  recog.lang = 'fa-IR';
+  recog.interimResults = true;
+  recog.continuous = true;
+  let base = inputEl.value ? inputEl.value + ' ' : '';
+  recog.onresult = (e) => {
+    let interim = '', fin = '';
+    for (let i = e.resultIndex; i < e.results.length; i++) {
+      if (e.results[i].isFinal) fin += e.results[i][0].transcript;
+      else interim += e.results[i][0].transcript;
+    }
+    if (fin) base = (base + fin).replace(/\s+/g, ' ');
+    inputEl.value = (base + interim).trim();
+    autoresize();
+  };
+  recog.onend = () => { dictating = false; $('btn-mic').classList.remove('listening'); };
+  recog.onerror = (e) => {
+    dictating = false; $('btn-mic').classList.remove('listening');
+    if (e.error === 'not-allowed' || e.error === 'service-not-allowed') showError('دسترسی به میکروفن داده نشد.');
+    else if (e.error && e.error !== 'aborted' && e.error !== 'no-speech') showError('خطا در گفتار به متن.');
+  };
+  try { recog.start(); dictating = true; $('btn-mic').classList.add('listening'); }
+  catch { showError('شروع گفتار ممکن نشد.'); }
+}
+/* ---------- خواندن پاسخ با صدا (TTS رایگان) ---------- */
+function speakText(text) {
+  try {
+    if (!window.speechSynthesis) { showError('پخش صوتی در این مرورگر پشتیبانی نمی‌شه.'); return; }
+    if (window.speechSynthesis.speaking) { window.speechSynthesis.cancel(); return; }
+    const clean = String(text || '')
+      .replace(/```[\s\S]*?```/g, ' . تکه‌کد . ')
+      .replace(/[*#`_~>\[\](){}|]/g, ' ')
+      .replace(/\s+/g, ' ').trim().slice(0, 2000);
+    if (!clean) return;
+    const u = new SpeechSynthesisUtterance(clean);
+    u.lang = 'fa-IR'; u.rate = 0.95;
+    window.speechSynthesis.speak(u);
+  } catch { showError('پخش صوتی ممکن نشد.'); }
+}
+/* ---------- خروجی Markdown ---------- */
+function exportChat() {
+  const c = activeConvo();
+  if (!c || !c.messages.length) { showError('گفتگویی برای خروجی نیست.'); return; }
+  let md = '# ' + (c.title || 'گفتگو') + '\n\n';
+  for (const m of c.messages) {
+    md += m.role === 'user' ? '## 🙋 تو\n\n' : '## 🤖 دستیار\n\n';
+    if (m.attachments && m.attachments.length) {
+      md += m.attachments.map((a) => '> 📎 پیوست: ' + a.name + '\n').join('') + '\n';
+    }
+    md += (m.content || '') + '\n\n---\n\n';
+  }
+  const blob = new Blob(['﻿' + md], { type: 'text/markdown;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'chat-' + String(c.id || 'x').slice(-6) + '.md';
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+}
+
 /* ---------- events ---------- */
 function autoresize() {
   inputEl.style.height = 'auto';
@@ -954,6 +1257,26 @@ $('convo-search').addEventListener('input', (e) => { convoQuery = e.target.value
 
 $('btn-send').onclick = () => submitUserText(inputEl.value);
 $('btn-stop').onclick = stopStream;
+$('btn-mic').onclick = toggleDictation;
+$('btn-export').onclick = exportChat;
+$('btn-attach').onclick = (e) => { e.stopPropagation(); $('attach-menu').classList.toggle('hidden'); };
+document.addEventListener('click', (e) => { if (!e.target.closest('.attach-wrap')) $('attach-menu').classList.add('hidden'); });
+$('attach-menu').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-am]');
+  if (!b) return;
+  $('attach-menu').classList.add('hidden');
+  const k = b.dataset.am;
+  if (k === 'file') $('fi-file').click();
+  else if (k === 'image') $('fi-image').click();
+  else if (k === 'camera') $('fi-camera').click();
+  else if (k === 'video') $('fi-video').click();
+  else if (k === 'voice') startRecording();
+});
+$('fi-file').addEventListener('change', (e) => { addFiles(e.target.files, 'file'); e.target.value = ''; });
+$('fi-image').addEventListener('change', (e) => { addFiles(e.target.files, 'image'); e.target.value = ''; });
+$('fi-camera').addEventListener('change', (e) => { addFiles(e.target.files, 'camera'); e.target.value = ''; });
+$('fi-video').addEventListener('change', (e) => { addFiles(e.target.files, 'video'); e.target.value = ''; });
+$('btn-record-stop').onclick = () => { try { if (mediaRecorder && mediaRecorder.state !== 'inactive') mediaRecorder.stop(); } catch {} };
 inputEl.addEventListener('input', autoresize);
 inputEl.addEventListener('keydown', (e) => {
   if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submitUserText(inputEl.value); }
@@ -985,6 +1308,8 @@ messagesEl.addEventListener('click', (e) => {
       btn.textContent = '✅ کپی شد';
       setTimeout(() => { btn.textContent = '📋 کپی'; }, 1400);
     }).catch(() => showError('کپی نشد؛ دستی انتخاب و کپی کن.'));
+  } else if (act === 'speak') {
+    speakText(m.content);
   } else if (act === 'regen') {
     regenerate();
   } else if (act === 'like' || act === 'dislike') {

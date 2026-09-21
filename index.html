@@ -47,6 +47,7 @@
         <div id="model-menu" class="model-menu hidden"></div>
       </div>
       <span class="header-spacer"></span>
+      <button id="btn-export" class="icon-btn" title="دانلود گفتگو (Markdown)">📥</button>
     </header>
 
     <div id="messages" class="messages"></div>
@@ -61,8 +62,26 @@
 
     <div class="composer-wrap">
       <div id="error-bar" class="error-bar hidden"></div>
+      <div id="attach-chips" class="attach-chips hidden"></div>
+      <div id="record-bar" class="record-bar hidden">
+        <span class="rec-dot"></span>
+        <span id="record-time">0:00</span>
+        <span class="rec-label">در حال ضبط…</span>
+        <button id="btn-record-stop" class="btn-chip">⏹ توقف و پیوست</button>
+      </div>
       <div class="composer">
+        <div class="attach-wrap">
+          <button id="btn-attach" class="icon-btn big" title="افزودن فایل، عکس، ویدیو یا صدا">➕</button>
+          <div id="attach-menu" class="attach-menu hidden">
+            <button data-am="file">📎<span>فایل</span></button>
+            <button data-am="image">🖼️<span>عکس از گالری</span></button>
+            <button data-am="camera">📷<span>دوربین</span></button>
+            <button data-am="video">🎥<span>ویدیو</span></button>
+            <button data-am="voice">🎙️<span>ضبط صدا</span></button>
+          </div>
+        </div>
         <textarea id="input" rows="1" placeholder="پیام بده… (Enter برای ارسال)"></textarea>
+        <button id="btn-mic" class="icon-btn big" title="گفتار به متن (فارسی)">🎤</button>
         <button id="btn-send" class="btn-send" title="ارسال">➤</button>
         <button id="btn-stop" class="btn-stop hidden" title="توقف">■</button>
       </div>
@@ -70,6 +89,10 @@
     </div>
   </main>
 </div>
+<input type="file" id="fi-file" class="hidden" multiple>
+<input type="file" id="fi-image" class="hidden" accept="image/*" multiple>
+<input type="file" id="fi-camera" class="hidden" accept="image/*" capture="environment">
+<input type="file" id="fi-video" class="hidden" accept="video/*">
 
 <!-- مودال تنظیمات -->
 <div id="settings-modal" class="modal hidden">
