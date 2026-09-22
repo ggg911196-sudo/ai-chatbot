@@ -214,6 +214,8 @@ function shortModelName(m) {
 function escapeHtml(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, (m) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m])); }
 
 /* ---------- elements ---------- */
+/* LotUS AI Chat — v6.11 */
+const APP_VERSION = '6.11';
 const $ = (id) => document.getElementById(id);
 const messagesEl = $('messages'), welcomeEl = $('welcome'), inputEl = $('input');
 const errorBar = $('error-bar');
@@ -1678,5 +1680,6 @@ document.addEventListener('click', (e) => {
 });
 if (!visibleProviders().includes(settings.activeProvider)) settings.activeProvider = 'openai';
 migratePreviewModels();
+const _av = $('app-version'); if (_av) _av.textContent = 'نسخه برنامه: ' + APP_VERSION;
 renderAll();
 autoresize();
