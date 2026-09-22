@@ -9,7 +9,7 @@ const LS_STATS = 'aichat.stats.v1';
 /* ارائه‌دهنده‌ها (OpenAI-Compatible) */
 const PROVIDER_PRESETS = {
   openai:     { label: 'OpenAI',        baseUrl: 'https://api.openai.com/v1',                          models: ['gpt-4o-mini', 'gpt-4o'] },
-  gemini:     { label: 'Google Gemini', baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai', models: ['gemini-2.0-flash', 'gemini-2.5-flash'] },
+  gemini:     { label: 'Google Gemini', baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai', models: ['gemini-2.5-flash', 'gemini-2.5-flash-lite'] },
   groq:       { label: 'Groq',          baseUrl: 'https://api.groq.com/openai/v1',                     models: ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant'] },
   cerebras:   { label: 'Cerebras',      baseUrl: 'https://api.cerebras.ai/v1',                         models: ['llama-3.3-70b'] },
   mistral:    { label: 'Mistral',       baseUrl: 'https://api.mistral.ai/v1',                          models: ['mistral-small-latest', 'mistral-medium-latest'] },
@@ -736,7 +736,11 @@ async function testConnection() {
     });
     const data = await res.json().catch(() => ({}));
     if (res.ok) showTest('✅ اتصال موفق! مدل جواب داد.', true);
-    else showTest('❌ خطا: ' + (data.error?.message || res.status), false);
+    else {
+      let msg = data.error?.message || ('خطای ' + res.status);
+      if (res.status === 403) msg += ' — احتمالاً این مدل با کلیدت در دسترس نیست (مدل‌های preview نیاز به دسترسی خاص دارن)؛ یه مدل پایدار مثل gemini-2.5-flash امتحان کن.';
+      showTest('❌ خطا: ' + msg, false);
+    }
   } catch (e) {
     showTest('❌ خطا: ' + (e.message || 'اتصال برقرار نشد'), false);
   }
@@ -758,6 +762,30 @@ async function fetchModels() {
   } catch (e) {
     showTest('❌ ' + (e.message || 'دریافت مدل‌ها ناموفق بود'), false);
   }
+}
+
+/* مدل‌های پایدار پیشنهادی هر ارائه‌دهنده — مدل‌های آزمایشی (preview) هرگز خودکار انتخاب نمی‌شن */
+const STABLE_MODELS = {
+  gemini: ['gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-2.0-flash', 'gemini-2.0-flash-lite', 'gemini-2.5-pro'],
+  openai: ['gpt-4o-mini', 'gpt-4o', 'gpt-4.1-mini'],
+  groq: ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant'],
+  xai: ['grok-3-mini', 'grok-3'],
+  deepseek: ['deepseek-chat', 'deepseek-reasoner'],
+  mistral: ['mistral-small-latest', 'mistral-medium-latest'],
+  cerebras: ['llama-3.3-70b'],
+  together: ['meta-llama/Llama-3.3-70B-Instruct-Turbo'],
+  openrouter: ['meta-llama/llama-3.3-70b-instruct:free'],
+};
+const isPreviewModel = (m) => /preview|experimental|exp-|computer-use|thinking|nightly|beta/i.test(m);
+function pickSuggestedModel(pid, ids) {
+  if (!ids || !ids.length) return '';
+  const priority = STABLE_MODELS[pid] || [];
+  const hit = priority.find((m) => ids.includes(m));
+  if (hit) return hit;
+  const preset = (PROVIDER_PRESETS[pid] && PROVIDER_PRESETS[pid].models[0]) || '';
+  if (preset && ids.includes(preset) && !isPreviewModel(preset)) return preset;
+  const stable = ids.filter((m) => !isPreviewModel(m));
+  return stable.find((m) => /flash|mini|small|lite|pro|chat|instruct/i.test(m)) || stable[0] || ids[0];
 }
 
 /* اتصال هوشمند */
@@ -800,8 +828,7 @@ async function smartConnect() {
       const ids = preProbed || await probeModels(pid, p.baseUrl, key);
       if (ids.length) {
         p.modelsList = ids; modelCount = ids.length;
-        const preset = PROVIDER_PRESETS[pid].models[0];
-        chosen = ids.includes(preset) ? preset : ids.find((m) => /flash|mini|small/i.test(m)) || ids[0];
+        chosen = pickSuggestedModel(pid, ids);
         p.model = chosen;
       }
     } catch {}
