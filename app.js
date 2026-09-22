@@ -17,7 +17,7 @@ const PROVIDER_PRESETS = {
   openrouter: { label: 'OpenRouter',    baseUrl: 'https://openrouter.ai/api/v1',                       models: ['meta-llama/llama-3.3-70b-instruct:free', 'google/gemini-2.0-flash-001'] },
   deepseek:   { label: 'DeepSeek',      baseUrl: 'https://api.deepseek.com/v1',                        models: ['deepseek-chat', 'deepseek-reasoner'] },
   xai:        { label: 'xAI (Grok)',    baseUrl: 'https://api.x.ai/v1',                                models: ['grok-3-mini', 'grok-3'] },
-  custom:     { label: '✏️ سفارشی',      baseUrl: '',                                                   models: [] },
+  custom:     { label: 'سفارشی',        baseUrl: '',                                                   models: [] },
 };
 const PROVIDER_IDS = Object.keys(PROVIDER_PRESETS);
 
@@ -30,11 +30,14 @@ const KEY_HINTS = [
   [/^sk-proj-/i, 'openai'],
 ];
 
+/* آیکون یکدست: همه آیکون‌های خطی در index.html به‌صورت symbol تعریف شده‌اند */
+const icon = (name) => '<svg class="ic" aria-hidden="true"><use href="#i-' + name + '"/></svg>';
+
 const SUGGESTIONS = [
-  ['💡', 'یه ایده خلاقانه برای کانال تلگرامم بده'],
-  ['🐍', 'یه تابع پایتون برای مرتب‌سازی لیست بنویس'],
-  ['📝', 'این جمله رو به انگلیسی ترجمه کن: «هوش مصنوعی آینده است»'],
-  ['📚', 'یه برنامه مطالعه ۷ روزه برای امتحان ریاضی بساز'],
+  ['bulb', 'یه ایده خلاقانه برای کانال تلگرامم بده'],
+  ['code', 'یه تابع پایتون برای مرتب‌سازی لیست بنویس'],
+  ['translate', 'این جمله رو به انگلیسی ترجمه کن: «هوش مصنوعی آینده است»'],
+  ['book', 'یه برنامه مطالعه ۷ روزه برای امتحان ریاضی بساز'],
 ];
 const FOLLOWUPS = ['بیشتر توضیح بده', 'یه مثال عملی بزن', 'خلاصه‌اش کن'];
 
@@ -245,21 +248,21 @@ function renderSidebar() {
     items = convos.filter((c) => c.title.includes(q) || c.messages.some((m) => m.content.includes(q)));
   }
   if (!items.length) {
-    list.innerHTML = '<div class="convo-empty"><span class="big">💬</span>' + (convoQuery.trim() ? 'چیزی پیدا نشد.' : 'هنوز گفتگویی نداری.<br>یکی بساز و شروع کن! ✨') + '</div>';
+    list.innerHTML = '<div class="convo-empty"><span class="big">' + icon('chatplus') + '</span>' + (convoQuery.trim() ? 'چیزی پیدا نشد.' : 'هنوز گفتگویی نداری.<br>یکی بساز و شروع کن!') + '</div>';
   } else if (convoQuery.trim()) {
     for (const c of items) list.appendChild(convoEl(c));
   } else {
     const pinned = items.filter((c) => c.pinned);
     if (pinned.length) {
       const gl = document.createElement('div');
-      gl.className = 'group-label'; gl.textContent = '📌 سنجاق‌شده';
+      gl.className = 'group-label'; gl.textContent = 'سنجاق‌شده';
       list.appendChild(gl);
       for (const c of pinned) list.appendChild(convoEl(c));
     }
     const groups = {};
     for (const c of items) { if (c.pinned) continue; const g = groupLabel(c.updatedAt); (groups[g] = groups[g] || []).push(c); }
     const gl2 = document.createElement('div');
-    gl2.className = 'group-label'; gl2.textContent = '🕘 گفتگوهای اخیر';
+    gl2.className = 'group-label'; gl2.textContent = 'گفتگوهای اخیر';
     list.appendChild(gl2);
     for (const g of ['امروز', 'دیروز', '۷ روز گذشته', 'قدیمی‌تر']) {
       if (!groups[g]) continue;
@@ -276,8 +279,7 @@ function renderSidebar() {
   chipEl.appendChild(ct);
   const abBtn = $('btn-admin');
   const abSpan = abBtn.querySelector('span');
-  if (abSpan) { abBtn.childNodes[0].textContent = isAdmin() ? '🛡' : '🔐'; abSpan.textContent = isAdmin() ? 'پنل مدیر' : 'ورود مدیر'; }
-  else abBtn.textContent = isAdmin() ? '🛡 پنل مدیر' : '🔐 ورود مدیر';
+  if (abSpan) abSpan.textContent = isAdmin() ? 'پنل مدیر' : 'ورود مدیر';
   $('admin-badge').classList.toggle('hidden', !isAdmin());
   renderMsLabel();
 }
@@ -292,7 +294,7 @@ function togglePin(id) {
 function convoEl(c) {
   const d = document.createElement('div');
   d.className = 'convo' + (c.id === activeConvoId ? ' active' : '') + (c.pinned ? ' pinned' : '');
-  d.innerHTML = '<span class="t"></span><span class="convo-actions"><button class="icon-btn pin' + (c.pinned ? ' on' : '') + '" title="سنجاق">📌</button><button class="icon-btn rn" title="تغییر نام">✏️</button><button class="icon-btn del" title="حذف">🗑</button></span>';
+  d.innerHTML = '<span class="t"></span><span class="convo-actions"><button class="icon-btn pin' + (c.pinned ? ' on' : '') + '" title="سنجاق">' + icon('pin') + '</button><button class="icon-btn rn" title="تغییر نام">' + icon('pencil') + '</button><button class="icon-btn del" title="حذف">' + icon('trash') + '</button></span>';
   d.querySelector('.t').textContent = c.title;
   d.onclick = () => setActiveConvo(c.id);
   d.querySelector('.pin').onclick = (e) => { e.stopPropagation(); togglePin(c.id); };
@@ -371,7 +373,7 @@ function buildUserEl(m) {
       } else {
         const tag = document.createElement('span');
         tag.className = 'att-tag';
-        tag.textContent = (a.kind === 'text' ? '📄 ' : a.kind === 'audio' ? '🎙️ ' : a.kind === 'video' ? '🎥 ' : '📎 ') + (a.name || 'فایل');
+        tag.textContent = a.name || 'فایل';
         row.appendChild(tag);
       }
     }
@@ -400,11 +402,11 @@ function buildAssistantEl(m, idx, isLast) {
   const actions = document.createElement('div');
   actions.className = 'msg-actions';
   actions.innerHTML =
-    '<button class="act-btn" data-act="copy">📋 کپی</button>' +
-    '<button class="act-btn" data-act="speak">🔊 بخون</button>' +
-    '<button class="act-btn" data-act="regen">🔄 تلاش مجدد</button>' +
-    '<button class="act-btn' + (m.rating === 1 ? ' on' : '') + '" data-act="like">👍</button>' +
-    '<button class="act-btn' + (m.rating === -1 ? ' on' : '') + '" data-act="dislike">👎</button>';
+    '<button class="act-btn" data-act="copy" title="کپی">' + icon('copy') + '</button>' +
+    '<button class="act-btn" data-act="speak" title="بخون">' + icon('speak') + '</button>' +
+    '<button class="act-btn" data-act="regen" title="تلاش مجدد">' + icon('refresh') + '</button>' +
+    '<button class="act-btn' + (m.rating === 1 ? ' on' : '') + '" data-act="like" title="خوب بود">' + icon('thumbup') + '</button>' +
+    '<button class="act-btn' + (m.rating === -1 ? ' on' : '') + '" data-act="dislike" title="بد بود">' + icon('thumbdown') + '</button>';
   wrap.appendChild(head); wrap.appendChild(body); wrap.appendChild(actions);
   if (isLast) {
     const fu = document.createElement('div');
@@ -429,7 +431,7 @@ function renderSuggestions() {
     const card = document.createElement('button');
     card.className = 'suggest-row';
     card.innerHTML = '<span class="ic"></span><span class="tx"></span>';
-    card.querySelector('.ic').textContent = ic;
+    card.querySelector('.ic').innerHTML = icon(ic);
     card.querySelector('.tx').textContent = tx;
     card.onclick = () => submitUserText(tx);
     g.appendChild(card);
@@ -633,7 +635,7 @@ function openModelMenu() {
     h.className = 'mm-provider';
     h.appendChild(providerLogo(id));
     const ht = document.createElement('span');
-    ht.textContent = (p.apiKey ? '' : '🔑 ') + p.label;
+    ht.textContent = p.label;
     h.appendChild(ht);
     g.appendChild(h);
     const models = providerModels(id);
@@ -843,7 +845,7 @@ function renderAdminAuth() {
   if (isAdmin()) { box.innerHTML = ''; return; }
   if (!admin) {
     box.innerHTML =
-      '<h3>👑 ساخت حساب مدیر</h3>' +
+      '<h3>ساخت حساب مدیر</h3>' +
       '<p class="note">هنوز حسابی ساخته نشده. یه ایمیل و رمز برای خودت بساز — فقط تو با این مشخصات می‌تونی وارد پنل مدیریت بشی.</p>' +
       '<label>ایمیل<input type="email" id="adm-email" dir="ltr" placeholder="you@example.com"></label>' +
       '<label>رمز عبور<input type="password" id="adm-pass" placeholder="حداقل ۶ کاراکتر"></label>' +
@@ -866,7 +868,7 @@ function renderAdminAuth() {
     };
   } else {
     box.innerHTML =
-      '<h3>🔐 ورود مدیر</h3>' +
+      '<h3>ورود مدیر</h3>' +
       '<p class="note">فقط با ایمیل و رمزی که موقع ساخت حساب وارد کردی می‌تونی وارد بشی.</p>' +
       '<label>ایمیل<input type="email" id="adm-email" dir="ltr" placeholder="you@example.com"></label>' +
       '<label>رمز عبور<input type="password" id="adm-pass" placeholder="رمز عبور"></label>' +
@@ -895,10 +897,11 @@ function renderAdminPanel() {
   panel.classList.remove('hidden');
   const tabs = $('admin-tabs');
   tabs.innerHTML = '';
-  const names = { stats: '📊 آمار', providers: '🎛 ارائه‌دهنده‌ها', security: '🔑 امنیت', data: '💾 داده‌ها' };
-  for (const [id, label] of Object.entries(names)) {
+  const names = { stats: ['chart', 'آمار'], providers: ['sliders', 'ارائه‌دهنده‌ها'], security: ['lock', 'امنیت'], data: ['download', 'داده‌ها'] };
+  for (const [id, [ic, label]] of Object.entries(names)) {
     const b = document.createElement('button');
-    b.textContent = label;
+    b.innerHTML = icon(ic) + '<span></span>';
+    b.querySelector('span').textContent = label;
     if (adminTab === id) b.classList.add('active');
     b.onclick = () => { adminTab = id; renderAdminPanel(); };
     tabs.appendChild(b);
@@ -914,13 +917,14 @@ function renderAdminPanel() {
 function renderAdminStats(c) {
   const total = convos.length;
   const totalMsgs = convos.reduce((n, x) => n + x.messages.length, 0);
-  c.innerHTML = '<h3>📊 آمار کلی</h3><div class="stat-cards" id="sc"></div><h3>استفاده به تفکیک ارائه‌دهنده</h3><div id="sb"></div>';
+  c.innerHTML = '<h3>آمار کلی</h3><div class="stat-cards" id="sc"></div><h3>استفاده به تفکیک ارائه‌دهنده</h3><div id="sb"></div>';
   const sc = c.querySelector('#sc');
-  const cards = [['💬', total, 'گفتگو'], ['✉️', totalMsgs, 'پیام'], ['📨', stats.messages, 'پیام این مرورگر']];
-  for (const [ic, n, l] of cards) {
+  const cards = [[total, 'گفتگو'], [totalMsgs, 'پیام'], [stats.messages, 'پیام این مرورگر']];
+  for (const [n, l] of cards) {
     const d = document.createElement('div');
     d.className = 'stat-card';
-    d.innerHTML = '<div class="sc-num">' + n + '</div><div class="sc-label">' + ic + ' ' + l + '</div>';
+    d.innerHTML = '<div class="sc-num">' + n + '</div><div class="sc-label"></div>';
+    d.querySelector('.sc-label').textContent = l;
     sc.appendChild(d);
   }
   const sb = c.querySelector('#sb');
@@ -937,7 +941,7 @@ function renderAdminStats(c) {
 }
 
 function renderAdminProviders(c) {
-  c.innerHTML = '<h3>🎛 نمایش ارائه‌دهنده‌ها برای مهمان‌ها</h3><p class="note">مهمان‌ها بدون ورود از سایت استفاده می‌کنن، ولی فقط ارائه‌دهنده‌هایی رو می‌بینن که اینجا روشن باشن.</p><div id="pr"></div>';
+  c.innerHTML = '<h3>نمایش ارائه‌دهنده‌ها برای مهمان‌ها</h3><p class="note">مهمان‌ها بدون ورود از سایت استفاده می‌کنن، ولی فقط ارائه‌دهنده‌هایی رو می‌بینن که اینجا روشن باشن.</p><div id="pr"></div>';
   const box = c.querySelector('#pr');
   for (const id of PROVIDER_IDS) {
     if (id === 'custom') continue;
@@ -946,7 +950,7 @@ function renderAdminProviders(c) {
     row.className = 'prov-row';
     row.innerHTML = '<div class="pr-info"><b></b><span class="pr-key"></span></div><label class="switch"><input type="checkbox"><span class="slider"></span></label>';
     row.querySelector('b').textContent = p.label;
-    row.querySelector('.pr-key').textContent = p.apiKey ? '🔑 کلید ثبت شده' : 'بدون کلید';
+    row.querySelector('.pr-key').textContent = p.apiKey ? 'کلید ثبت شده' : 'بدون کلید';
     const chk = row.querySelector('input');
     chk.checked = settings.providerVisible[id] !== false;
     chk.onchange = () => { settings.providerVisible[id] = chk.checked; saveSettings(); renderAll(); };
@@ -956,7 +960,7 @@ function renderAdminProviders(c) {
 
 function renderAdminSecurity(c) {
   c.innerHTML =
-    '<h3>🔑 تغییر مشخصات ورود</h3>' +
+    '<h3>تغییر مشخصات ورود</h3>' +
     '<label>ایمیل جدید<input type="email" id="adm-new-email" dir="ltr"></label>' +
     '<div class="modal-actions"><button class="btn-ghost" id="adm-save-email">ذخیره ایمیل</button></div>' +
     '<label>رمز فعلی<input type="password" id="adm-cur-pass"></label>' +
@@ -991,14 +995,14 @@ function renderAdminSecurity(c) {
 
 function renderAdminData(c) {
   c.innerHTML =
-    '<h3>💾 بکاپ و داده‌ها</h3>' +
+    '<h3>بکاپ و داده‌ها</h3>' +
     '<div class="modal-actions">' +
     '<button class="btn-ghost" id="adm-export">⬇️ دانلود بکاپ</button>' +
     '<label class="btn-ghost file-label" style="flex:1">⬆️ بازیابی بکاپ<input type="file" id="adm-import" accept=".json" class="hidden"></label>' +
     '</div>' +
     '<div class="modal-actions">' +
-    '<button class="btn-danger" id="adm-clear-convos">🗑 حذف همه گفتگوها</button>' +
-    '<button class="btn-danger" id="adm-wipe">💥 پاک‌سازی کامل</button>' +
+    '<button class="btn-danger" id="adm-clear-convos">حذف همه گفتگوها</button>' +
+    '<button class="btn-danger" id="adm-wipe">پاک‌سازی کامل</button>' +
     '</div>' +
     '<div id="adm-data-msg" class="test-result hidden"></div>' +
     '<p class="note">بکاپ شامل تنظیمات، گفتگوها و آمار می‌شه. حساب مدیر توی بکاپ نیست.</p>';
@@ -1138,9 +1142,9 @@ function renderAttachChips() {
     let visual = '';
     if (a.kind === 'image' && a.dataUrl) visual = '<img class="thumb" alt="">';
     else if (a.kind === 'video' && a.frameUrl) visual = '<img class="thumb" alt="">';
-    else visual = '<span class="a-ico">' + (a.kind === 'audio' ? '🎙️' : a.kind === 'text' ? '📄' : a.kind === 'video' ? '🎥' : '📎') + '</span>';
-    const badge = a.transcribed ? '<span class="a-ok">✓ رونویسی شد</span>' : (a.transcribing ? '<span class="a-ok">⏳ رونویسی…</span>' : '');
-    chip.innerHTML = visual + '<span class="a-name"></span>' + badge + '<button class="a-x" title="حذف">✕</button>';
+    else visual = '<span class="a-ico">' + icon(a.kind === 'audio' ? 'mic' : a.kind === 'text' ? 'filetext' : a.kind === 'video' ? 'video' : 'clip') + '</span>';
+    const badge = a.transcribed ? '<span class="a-ok">✓ رونویسی شد</span>' : (a.transcribing ? '<span class="a-ok">در حال رونویسی…</span>' : '');
+    chip.innerHTML = visual + '<span class="a-name"></span>' + badge + '<button class="a-x" title="حذف">' + icon('x') + '</button>';
     const im = chip.querySelector('img.thumb');
     if (im) im.src = a.dataUrl || a.frameUrl;
     chip.querySelector('.a-name').textContent = a.name;
@@ -1274,7 +1278,7 @@ function exportChat() {
   if (!c || !c.messages.length) { showError('گفتگویی برای خروجی نیست.'); return; }
   let md = '# ' + (c.title || 'گفتگو') + '\n\n';
   for (const m of c.messages) {
-    md += m.role === 'user' ? '## 🙋 تو\n\n' : '## 🤖 دستیار\n\n';
+    md += m.role === 'user' ? '## تو\n\n' : '## دستیار\n\n';
     if (m.attachments && m.attachments.length) {
       md += m.attachments.map((a) => '> 📎 پیوست: ' + a.name + '\n').join('') + '\n';
     }
@@ -1296,7 +1300,19 @@ function autoresize() {
 
 $('btn-new-chat').onclick = newConvo;
 $('btn-new-chat-top').onclick = newConvo;
-$('btn-toggle-sidebar').onclick = () => document.body.classList.toggle('sidebar-open');
+$('btn-toggle-sidebar').onclick = () => {
+  if (window.matchMedia('(max-width:860px)').matches) document.body.classList.toggle('sidebar-open');
+  else document.body.classList.toggle('sidebar-hidden');
+};
+$('drawer-scrim').onclick = () => document.body.classList.remove('sidebar-open');
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'Escape') return;
+  document.body.classList.remove('sidebar-open');
+  closeModelMenu();
+  const tp = $('theme-pop'); if (tp) tp.classList.add('hidden');
+  const am = $('attach-menu'); if (am) am.classList.add('hidden');
+  closeSettings(); closeAdmin();
+});
 $('btn-search-toggle').onclick = () => {
   const w = $('search-wrap');
   w.classList.toggle('hidden');
@@ -1363,8 +1379,8 @@ messagesEl.addEventListener('click', (e) => {
   const act = btn.dataset.act;
   if (act === 'copy') {
     navigator.clipboard.writeText(m.content).then(() => {
-      btn.textContent = '✅ کپی شد';
-      setTimeout(() => { btn.textContent = '📋 کپی'; }, 1400);
+      btn.innerHTML = icon('check'); btn.classList.add('on');
+      setTimeout(() => { btn.innerHTML = icon('copy'); btn.classList.remove('on'); }, 1400);
     }).catch(() => showError('کپی نشد؛ دستی انتخاب و کپی کن.'));
   } else if (act === 'speak') {
     speakText(m.content);

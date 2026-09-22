@@ -693,6 +693,41 @@ html[data-theme="chatgpt"] .record-bar{background:#fff}
 
 /* v6.2: کامپوزر به سبک ChatGPT — آیکون‌های خطی + دکمه صوتی/ارسال */
 .icon-btn.big svg{width:25px;height:25px;display:block}
+
+/* v6.5: سیستم آیکون یکدست + بستن پنجره‌ها با تاپ روی صفحه */
+.ic{width:20px;height:20px;flex-shrink:0;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.nav-btn .ic{width:21px;height:21px}
+.nav-btn{display:flex;align-items:center;gap:12px}
+.icon-btn .ic{width:17px;height:17px;display:block}
+.icon-btn.big .ic{width:25px;height:25px}
+.btn-new-chat{display:flex;align-items:center;justify-content:center;gap:8px}
+.btn-new-chat .ic{width:20px;height:20px}
+.drawer-title{display:inline-flex;align-items:center;gap:8px}
+.drawer-title .ic{width:22px;height:22px}
+.badge.admin{display:inline-flex;align-items:center;gap:5px}
+.badge.admin .ic{width:13px;height:13px}
+.btn-icon .ic{width:15px;height:15px;display:block}
+#btn-toggle-key .ic{width:18px;height:18px}
+.act-btn .ic{width:16px;height:16px}
+.a-chip .a-ico .ic{width:20px;height:20px}
+.a-chip .a-x .ic{width:13px;height:13px;display:block}
+.convo-empty .big .ic{width:44px;height:44px;stroke-width:1.3}
+.suggest-row .ic{display:inline-flex;flex-shrink:0}
+.suggest-row span.ic .ic{width:22px;height:22px}
+.welcome-mark{margin-bottom:10px;filter:drop-shadow(0 4px 20px var(--accent-soft));color:var(--accent)}
+.welcome-mark .ic{width:54px;height:54px}
+#admin-tabs button{display:inline-flex;align-items:center;gap:7px}
+#admin-tabs button .ic{width:16px;height:16px}
+.attach-menu .am-ico .ic{width:26px;height:26px}
+
+/* اسکریم دراور موبایل: تاپ روی صفحه دراور را می‌بندد */
+#drawer-scrim{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:4;opacity:0;pointer-events:none;transition:opacity .25s}
+@media(max-width:860px){
+  body.sidebar-open #drawer-scrim{opacity:1;pointer-events:auto}
+}
+@media(min-width:861px){
+  body.sidebar-hidden #sidebar{display:none}
+}
 .btn-send .ic-voice{width:21px;height:21px;display:block}
 .btn-send .ic-arrow{width:21px;height:21px;display:none}
 .composer.has-text .btn-send .ic-arrow{display:block}
