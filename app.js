@@ -214,7 +214,7 @@ function escapeHtml(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, (
 
 /* ---------- elements ---------- */
 /* LotUS AI Chat — v6.14 */
-const APP_VERSION = '6.16';
+const APP_VERSION = '6.17';
 const $ = (id) => document.getElementById(id);
 const messagesEl = $('messages'), welcomeEl = $('welcome'), inputEl = $('input');
 const errorBar = $('error-bar');
@@ -1117,12 +1117,15 @@ function renderMsLabel() {
 function openModelMenu() {
   const menu = $('model-menu');
   menu.innerHTML = '';
-  /* فقط ارائه‌دهنده‌هایی که کلید دارن (وصلن) نشون داده می‌شن */
-  const connected = visibleProviders().filter((id) => id !== 'custom' && (settings.providers[id].apiKey || '').trim());
+  /* فقط مدلِ ذخیره‌شده‌ی هر سرویس متصل — نه فهرست کامل مدل‌های API */
+  const connected = visibleProviders().filter((id) => {
+    const p = settings.providers[id];
+    return p && (p.apiKey || '').trim() && (p.model || '').trim();
+  });
   if (!connected.length) {
     const s = document.createElement('div');
     s.className = 'mm-empty';
-    s.textContent = 'هنوز به هیچ ارائه‌دهنده‌ای وصل نیستی — از تنظیمات کلید API رو وارد کن.';
+    s.textContent = 'هنوز مدلی نداری — از تنظیمات کلید API رو وارد و مدل رو انتخاب کن.';
     menu.appendChild(s);
     menu.classList.remove('hidden');
     return;
@@ -1138,22 +1141,13 @@ function openModelMenu() {
     ht.textContent = p.label;
     h.appendChild(ht);
     g.appendChild(h);
-    const models = availableModels(id);
-    if (!models.length) {
-      const s = document.createElement('div');
-      s.className = 'mm-empty';
-      s.textContent = 'لیست مدل‌ها دریافت نشده — از تنظیمات «دریافت لیست مدل‌ها» رو بزن';
-      g.appendChild(s);
-    }
-    for (const m of models.slice(0, 30)) {
-      const btn = document.createElement('button');
-      btn.className = 'mm-model' + (settings.activeProvider === id && p.model === m ? ' sel' : '');
-      btn.dir = 'ltr';
-      btn.textContent = shortModelName(m);
-      btn.title = m;
-      btn.onclick = () => selectModel(id, m);
-      g.appendChild(btn);
-    }
+    const btn = document.createElement('button');
+    btn.className = 'mm-model' + (settings.activeProvider === id ? ' sel' : '');
+    btn.dir = 'ltr';
+    btn.textContent = shortModelName(p.model);
+    btn.title = p.model;
+    btn.onclick = () => selectModel(id, p.model);
+    g.appendChild(btn);
     menu.appendChild(g);
   }
   menu.classList.remove('hidden');
