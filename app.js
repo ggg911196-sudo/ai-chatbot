@@ -214,7 +214,7 @@ function escapeHtml(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, (
 
 /* ---------- elements ---------- */
 /* LotUS AI Chat — v6.14 */
-const APP_VERSION = '6.15';
+const APP_VERSION = '6.16';
 const $ = (id) => document.getElementById(id);
 const messagesEl = $('messages'), welcomeEl = $('welcome'), inputEl = $('input');
 const errorBar = $('error-bar');
@@ -596,11 +596,37 @@ function renderChatPicker(content, p) {
 /* تزریق زمینه پروژه به پیام‌های API */
 function projectContext(p) {
   const sys = [];
-  if (p.instructions && p.instructions.trim()) sys.push('دستورالعمل پروژه «' + p.name + '»:\n' + p.instructions.trim());
+  if (p.instructions && p.instructions.trim()) sys.push('دستورالعمل پروژه «' + p.name + '»:\n' + p.instructions.trim().slice(0, 8000));
+  let budget = 40000; /* سقف کلی متن فایل‌ها تا پیام از ظرفیت مدل نزنه بیرون */
   for (const f of (p.files || [])) {
-    if (f.kind === 'text' && f.text) sys.push('📄 محتوای فایل «' + f.name + '» (زمینه مشترک پروژه):\n```\n' + String(f.text).slice(0, 15000) + '\n```');
+    if (budget <= 0) break;
+    if (f.kind === 'text' && f.text) {
+      const t = String(f.text).slice(0, Math.min(15000, budget));
+      sys.push('📄 محتوای فایل «' + f.name + '» (زمینه مشترک پروژه):\n```\n' + t + '\n```');
+      budget -= t.length;
+    }
   }
   return sys.join('\n\n');
+}
+/* برآورد حجم پیام‌های API + کوتاه‌کردن تاریخچه از قدیمی‌ترین‌ها تا از سقف مدل رد نشه (جلوگیری از خطای 400) */
+function apiChars(m) {
+  const c = m.content;
+  if (typeof c === 'string') return c.length;
+  if (Array.isArray(c)) return c.reduce((n, p) => n + (p.type === 'text' ? (p.text || '').length : 2000), 0);
+  return 0;
+}
+const API_CHAR_BUDGET = 120000;
+function trimApiMessages(msgs) {
+  const sys = msgs.filter((m) => m.role === 'system');
+  const rest = msgs.filter((m) => m.role !== 'system');
+  let budget = Math.max(20000, API_CHAR_BUDGET - sys.reduce((n, m) => n + apiChars(m), 0));
+  const kept = [];
+  for (let i = rest.length - 1; i >= 0; i--) {
+    const cost = apiChars(rest[i]);
+    if (kept.length < 2 || budget >= cost) { kept.unshift(rest[i]); budget -= cost; }
+    else break;
+  }
+  return sys.concat(kept);
 }
 
 /* ---------- گالری مشترک تصاویر (v6.9) ---------- */
@@ -1051,6 +1077,7 @@ async function runAssistant(c) {
       let emsg = e.message || 'خطایی رخ داد. اتصال اینترنت و کلید API رو بررسی کن.';
       if (/خطای 403/.test(emsg)) emsg += ' (احتمالاً مدل انتخاب‌شده با کلیدت در دسترس نیست؛ از منوی مدل یه مدل پایدار انتخاب کن)';
       if (/خطای 404/.test(emsg)) emsg += ' (این مدل پیدا نشد؛ از تنظیمات «دریافت لیست مدل‌ها» رو بزن و یه مدل موجود انتخاب کن)';
+      if (/خطای 400/.test(emsg) && /reduce the length|too long|maximum context|context_length/i.test(emsg)) emsg += ' (حجم پیام‌های ارسالی — تاریخچه گفتگو + فایل‌های پروژه — از ظرفیت این مدل بیشتره؛ یه گفتگوی جدید شروع کن، فایل‌های سنگین پروژه رو کم کن یا مدلی با ظرفیت بیشتر انتخاب کن)';
       showError('⚠️ ' + emsg);
     }
   } finally {
@@ -1786,7 +1813,7 @@ function toApiMessages(c) {
       }
     }
   } catch {}
-  return msgs;
+  return trimApiMessages(msgs);
 }
 /* ---------- ضبط صدا + رونویسی Whisper ---------- */
 let mediaRecorder = null, recordChunks = [], recordTimer = null, recordStart = 0;
