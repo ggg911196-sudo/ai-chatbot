@@ -353,7 +353,7 @@ function startRename(id, itemEl) {
 
 /* ---------- قابلیت‌های دراور (v6.7) ---------- */
 const FEATURES = {
-  images:    { title: 'تصاویر',        icon: 'image',  desc: 'همه عکس‌ها و فریم‌های ویدیویی که توی گفتگوها فرستادی، اینجا جمع می‌شن.' },
+  images:    { title: 'تصاویر',        icon: 'image',  desc: 'گالری مشترک: تصاویر ساخته‌شده و به اشتراک‌گذاشته‌شده توسط همه کاربران.' },
   library:   { title: 'کتابخانه',      icon: 'book',   desc: 'متن‌ها، کدها و پاسخ‌های مهمی که ذخیره می‌کنی، اینجا نگه داشته می‌شن.' },
   projects:  { title: 'پروژه‌ها',      icon: 'folder', desc: 'گفتگوهای مرتبط رو توی یه پروژه گروه کن تا همیشه منظم و در دسترس بمونن.' },
   scheduled: { title: 'زمان‌بندی‌شده', icon: 'clock',  desc: 'پیام‌های زمان‌بندی‌شده؛ مثلاً هر صبح یه خلاصه خبری یا یادآوری بگیر.' },
@@ -375,38 +375,126 @@ function openFeature(id) {
   document.body.classList.remove('sidebar-open');
 }
 function closeFeature() { $('feature-modal').classList.add('hidden'); }
-function renderImageGallery(content) {
-  const shots = [];
-  for (const c of convos) {
-    for (const m of (c.messages || [])) {
-      for (const a of (m.attachments || [])) {
-        const src = a.dataUrl || a.frameUrl;
-        if ((a.kind === 'image' || a.kind === 'video') && src) shots.push({ src, cap: c.title });
-      }
+/* ---------- گالری مشترک تصاویر (v6.9) ---------- */
+const LS_GALLERY = 'aichat.gallery';
+const LS_GCONSENT = 'aichat.gallery.consent';
+function galleryCfg() { try { return JSON.parse(localStorage.getItem(LS_GALLERY)) || {}; } catch { return {}; } }
+function galleryReady() { const c = galleryCfg(); return !!(c.url && c.key); }
+async function supaRest(path, opts) {
+  const c = galleryCfg();
+  const base = String(c.url || '').replace(/\/+$/, '');
+  const res = await fetch(base + path, Object.assign({}, opts, {
+    headers: Object.assign({ apikey: c.key, Authorization: 'Bearer ' + c.key, 'Content-Type': 'application/json' }, (opts && opts.headers) || {}),
+  }));
+  if (!res.ok) throw new Error('خطای ' + res.status);
+  return res.json().catch(() => ({}));
+}
+function downscaleImage(dataUrl, maxDim) {
+  maxDim = maxDim || 512;
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      try {
+        const r = Math.min(1, maxDim / Math.max(img.width, img.height));
+        const cv = document.createElement('canvas');
+        cv.width = Math.max(1, Math.round(img.width * r));
+        cv.height = Math.max(1, Math.round(img.height * r));
+        cv.getContext('2d').drawImage(img, 0, 0, cv.width, cv.height);
+        cv.toBlob((b) => resolve(b), 'image/jpeg', 0.72);
+      } catch { resolve(null); }
+    };
+    img.onerror = () => resolve(null);
+    img.src = dataUrl;
+  });
+}
+/* آپلود بندانگشتی عکس‌های ارسالی در چت — خطا هرگز چت رو خراب نمی‌کنه */
+async function shareToGallery(atts, caption) {
+  if (!galleryReady()) return;
+  try {
+    const c = galleryCfg();
+    const base = String(c.url).replace(/\/+$/, '');
+    for (const a of atts) {
+      const src = a.dataUrl || a.frameUrl;
+      if (a.kind !== 'image' || !src || src.indexOf('data:') !== 0) continue;
+      const blob = await downscaleImage(src);
+      if (!blob) continue;
+      const name = 'g_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8) + '.jpg';
+      const up = await fetch(base + '/storage/v1/object/gallery/' + name, {
+        method: 'POST',
+        headers: { apikey: c.key, Authorization: 'Bearer ' + c.key, 'Content-Type': 'image/jpeg' },
+        body: blob,
+      });
+      if (!up.ok) continue;
+      await supaRest('/rest/v1/gallery', {
+        method: 'POST',
+        headers: { Prefer: 'return=minimal' },
+        body: JSON.stringify({ url: base + '/storage/v1/object/public/gallery/' + name, caption: String(caption || '').slice(0, 120) }),
+      });
     }
-  }
-  if (!shots.length) {
-    content.innerHTML = '<div class="feature-empty">' + icon('image') + 'هنوز عکسی نفرستادی.<br>از دکمه پیوست، عکس بفرست تا اینجا نمایش داده بشه.</div>';
+  } catch { /* silent */ }
+}
+async function fetchGallery(limit) {
+  const rows = await supaRest('/rest/v1/gallery?select=id,url,caption,created_at&order=created_at.desc&limit=' + (limit || 60));
+  return Array.isArray(rows) ? rows : [];
+}
+async function renderImageGallery(content) {
+  if (!galleryReady()) {
+    content.innerHTML = '<div class="feature-empty">' + icon('image') +
+      'گالری مشترک هنوز راه‌اندازی نشده.' +
+      (isAdmin() ? '<br>از پنل مدیر، تب «گالری مشترک» رو فعال کن.' : '<br>از مدیر برنامه بخواه فعالش کنه.') + '</div>';
     return;
   }
-  const grid = document.createElement('div');
-  grid.className = 'img-grid';
-  for (const s of shots.slice(-60).reverse()) {
-    const d = document.createElement('div');
-    d.className = 'g-item';
-    const img = document.createElement('img');
-    img.src = s.src; img.alt = s.cap; img.loading = 'lazy';
-    const cap = document.createElement('div');
-    cap.className = 'g-cap'; cap.textContent = s.cap;
-    d.appendChild(img); d.appendChild(cap);
-    d.onclick = () => window.open(s.src, '_blank');
-    grid.appendChild(d);
+  const consent = localStorage.getItem(LS_GCONSENT);
+  if (!consent) {
+    content.innerHTML =
+      '<div class="feature-empty">' + icon('image') +
+      'این گالری، تصاویر ساخته‌شده توسط <b>همه کاربران</b> رو نشون میده.<br>نمایش داده بشه؟</div>' +
+      '<div class="modal-actions" style="justify-content:center">' +
+      '<button class="btn-primary" id="g-consent-yes">باشه، نمایش بده</button>' +
+      '<button class="btn-ghost" id="g-consent-no">نه</button></div>' +
+      '<div class="feature-note">این اجازه فقط همین یک‌بار پرسیده می‌شه.</div>';
+    $('g-consent-yes').onclick = () => { localStorage.setItem(LS_GCONSENT, 'granted'); openFeature('images'); };
+    $('g-consent-no').onclick = () => { localStorage.setItem(LS_GCONSENT, 'denied'); openFeature('images'); };
+    return;
   }
-  content.appendChild(grid);
-  const note = document.createElement('div');
-  note.className = 'feature-note';
-  note.textContent = 'تصاویر فقط در همین نشست نگه داشته می‌شن (برای سبک موندن حافظه ذخیره نمی‌شن).';
-  content.appendChild(note);
+  if (consent === 'denied') {
+    content.innerHTML = '<div class="feature-empty">' + icon('image') + 'نمایش گالری رو رد کردی.</div>' +
+      '<div class="modal-actions" style="justify-content:center"><button class="btn-ghost" id="g-reask">تغییر نظر</button></div>';
+    $('g-reask').onclick = () => { localStorage.removeItem(LS_GCONSENT); openFeature('images'); };
+    return;
+  }
+  content.innerHTML = '<div class="feature-empty">' + icon('image') + 'در حال بارگذاری…</div>';
+  try {
+    const rows = await fetchGallery();
+    if (!rows.length) {
+      content.innerHTML = '<div class="feature-empty">' + icon('image') + 'هنوز تصویری به اشتراک گذاشته نشده.<br>اولین عکس رو تو بفرست!</div>';
+      return;
+    }
+    const grid = document.createElement('div');
+    grid.className = 'img-grid';
+    for (const r of rows) {
+      const d = document.createElement('div');
+      d.className = 'g-item';
+      const img = document.createElement('img');
+      img.src = r.url; img.alt = r.caption || ''; img.loading = 'lazy';
+      d.appendChild(img);
+      if (r.caption) {
+        const cap = document.createElement('div');
+        cap.className = 'g-cap'; cap.textContent = r.caption;
+        d.appendChild(cap);
+      }
+      d.onclick = () => window.open(r.url, '_blank');
+      grid.appendChild(d);
+    }
+    content.innerHTML = '';
+    content.appendChild(grid);
+    const note = document.createElement('div');
+    note.className = 'feature-note';
+    note.textContent = 'تصاویری که در چت فرستاده می‌شن، به‌صورت بندانگشتی اینجا به اشتراک گذاشته می‌شن.';
+    content.appendChild(note);
+  } catch (e) {
+    content.innerHTML = '<div class="feature-empty">' + icon('image') + 'خطا در بارگذاری گالری.<br>اتصال اینترنت یا تنظیمات سرور رو بررسی کن.</div>';
+  }
 }
 
 /* ---------- chat rendering ---------- */
@@ -617,6 +705,7 @@ async function submitUserText(text) {
   const msgAtts = attachments.map((a) => ({ id: a.id, kind: a.kind, name: a.name, mime: a.mime, size: a.size, dataUrl: a.dataUrl, frameUrl: a.frameUrl, blob: a.blob, text: a.text, transcribed: a.transcribed }));
   attachments = []; renderAttachChips();
   c.messages.push({ role: 'user', content: fullText.trim(), attachments: msgAtts });
+  shareToGallery(msgAtts, c.title);
   bumpStats(c.provider, 1);
   saveConvos();
   renderAll();
@@ -1010,7 +1099,7 @@ function renderAdminPanel() {
   panel.classList.remove('hidden');
   const tabs = $('admin-tabs');
   tabs.innerHTML = '';
-  const names = { stats: ['chart', 'آمار'], providers: ['sliders', 'ارائه‌دهنده‌ها'], security: ['lock', 'امنیت'], data: ['download', 'داده‌ها'] };
+  const names = { stats: ['chart', 'آمار'], providers: ['sliders', 'ارائه‌دهنده‌ها'], gallery: ['image', 'گالری مشترک'], security: ['lock', 'امنیت'], data: ['download', 'داده‌ها'] };
   for (const [id, [ic, label]] of Object.entries(names)) {
     const b = document.createElement('button');
     b.innerHTML = icon(ic) + '<span></span>';
@@ -1023,6 +1112,7 @@ function renderAdminPanel() {
   c.innerHTML = '';
   if (adminTab === 'stats') renderAdminStats(c);
   else if (adminTab === 'providers') renderAdminProviders(c);
+  else if (adminTab === 'gallery') renderAdminGallery(c);
   else if (adminTab === 'security') renderAdminSecurity(c);
   else if (adminTab === 'data') renderAdminData(c);
 }
@@ -1069,6 +1159,42 @@ function renderAdminProviders(c) {
     chk.onchange = () => { settings.providerVisible[id] = chk.checked; saveSettings(); renderAll(); };
     box.appendChild(row);
   }
+}
+
+function renderAdminGallery(c) {
+  const g = galleryCfg();
+  c.innerHTML =
+    '<h3>گالری مشترک تصاویر</h3>' +
+    '<p class="note">برای نمایش تصاویر همه کاربران، یه پروژه رایگان Supabase بساز. راهنمای قدم‌به‌قدم: <b dir="ltr">gallery-backend/SETUP-FA.md</b></p>' +
+    '<label>آدرس پروژه (URL)<input id="gal-url" dir="ltr" placeholder="https://xyz.supabase.co"></label>' +
+    '<label>کلید anon<input id="gal-key" dir="ltr" type="password" placeholder="anon public key"></label>' +
+    '<div class="modal-actions"><button class="btn-ghost" id="gal-test">تست اتصال</button><button class="btn-primary" id="gal-save">ذخیره</button></div>' +
+    '<div id="gal-msg" class="test-result hidden"></div>' +
+    '<p class="note">عکس‌های ارسالی در چت، بندانگشتی و کم‌حجم (حداکثر ۵۱۲ پیکسل، JPEG) آپلود می‌شن.</p>';
+  $('gal-url').value = g.url || '';
+  $('gal-key').value = g.key || '';
+  const msg = $('gal-msg');
+  const read = () => ({ url: $('gal-url').value.trim().replace(/\/+$/, ''), key: $('gal-key').value.trim() });
+  $('gal-save').onclick = () => {
+    const v = read();
+    if (!v.url || !v.key) { msg.className = 'test-result err'; msg.classList.remove('hidden'); msg.textContent = 'هر دو مقدار رو وارد کن.'; return; }
+    localStorage.setItem(LS_GALLERY, JSON.stringify(v));
+    msg.className = 'test-result ok'; msg.classList.remove('hidden'); msg.textContent = 'ذخیره شد.';
+  };
+  $('gal-test').onclick = async () => {
+    const v = read();
+    msg.classList.remove('hidden');
+    if (!v.url || !v.key) { msg.className = 'test-result err'; msg.textContent = 'اول هر دو مقدار رو وارد کن (یا ذخیره‌شده‌ها رو تست می‌کنم).'; }
+    const bak = galleryCfg();
+    localStorage.setItem(LS_GALLERY, JSON.stringify(v.url && v.key ? v : bak));
+    msg.className = 'test-result ok'; msg.textContent = 'در حال تست…';
+    try {
+      await fetchGallery(1);
+      msg.className = 'test-result ok'; msg.textContent = 'اتصال به گالری موفق بود!';
+    } catch (e) {
+      msg.className = 'test-result err'; msg.textContent = 'خطا: ' + (e.message || 'اتصال ناموفق');
+    }
+  };
 }
 
 function renderAdminSecurity(c) {
