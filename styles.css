@@ -805,3 +805,67 @@ html[data-theme="chatgpt"] .btn-mic.listening{color:#2b7fff}
 .pchat-rm .ic{width:15px;height:15px}
 .btn-icon.danger.armed{background:#e5484d;color:#fff}
 .btn-icon.danger.armed .ic{stroke:#fff}
+
+/* ===== v6.17: toast + کتابخانه + زمان‌بندی + افزونه‌ها ===== */
+.toast{position:fixed;bottom:26px;left:50%;transform:translate(-50%,14px);background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:14px;padding:11px 20px;font-size:13.5px;box-shadow:0 12px 32px rgba(0,0,0,.35);opacity:0;pointer-events:none;transition:opacity .22s,transform .22s;z-index:400;max-width:88vw;text-align:center;line-height:1.7}
+.toast.show{opacity:1;transform:translate(-50%,0)}
+.toast.ok{border-color:rgba(52,211,153,.45)}
+.toast.err{border-color:rgba(251,113,133,.5)}
+/* کتابخانه */
+.lib-count{font-size:12px;color:var(--muted2);white-space:nowrap}
+.lib-list{display:flex;flex-direction:column;gap:10px;min-height:150px}
+.lib-card{background:var(--surface);border:1px solid var(--border-soft);border-radius:var(--radius);padding:12px 14px}
+.lib-head{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+.lib-kind{font-size:11px;padding:2px 10px;border-radius:10px;background:var(--accent-tint);color:var(--accent);font-weight:700}
+.lib-kind.code{background:var(--accent2-tint);color:var(--accent2)}
+.lib-date{margin-inline-start:auto;font-size:11.5px;color:var(--muted2)}
+.lib-title{font-weight:700;font-size:14px;margin-bottom:6px;line-height:1.6}
+.lib-prev{white-space:pre-wrap;word-break:break-word;font-size:12.5px;color:var(--muted);line-height:1.8;max-height:88px;overflow:hidden;background:var(--bg2);border-radius:10px;padding:8px 10px;font-family:inherit;margin-bottom:6px}
+.lib-meta{font-size:11.5px;color:var(--muted2);margin-bottom:6px}
+.lib-acts,.sched-acts{display:flex;gap:4px}
+/* زمان‌بندی */
+.sched-note{font-size:11.5px;color:var(--muted2);line-height:1.8;flex:1}
+.sched-list{display:flex;flex-direction:column;gap:10px;min-height:150px}
+.sched-card{background:var(--surface);border:1px solid var(--border-soft);border-radius:var(--radius);padding:12px 14px}
+.sched-card.paused{opacity:.62}
+.sched-head{display:flex;align-items:center;gap:8px}
+.sched-dot{width:9px;height:9px;border-radius:50%;flex:none;background:var(--muted2)}
+.sched-dot.live{background:var(--ok);box-shadow:0 0 8px var(--ok)}
+.sched-dot.done{background:var(--muted)}
+.sched-name{font-size:14px}
+.sched-status{margin-inline-start:auto;font-size:11.5px;color:var(--muted2)}
+.sched-prompt{font-size:13px;color:var(--muted);margin:7px 0 3px;white-space:pre-wrap;line-height:1.8;word-break:break-word}
+.sched-meta{font-size:12px;color:var(--muted2)}
+.sched-next{font-size:12px;color:var(--accent);margin:4px 0 8px;font-weight:600}
+.sched-row{display:flex;gap:10px;align-items:flex-end}
+.sched-row label{flex:1}
+.sched-row .act-btn{margin-bottom:4px}
+/* افزونه‌ها */
+.plug-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+@media(max-width:600px){.plug-grid{grid-template-columns:1fr}}
+.plug-card{display:flex;flex-direction:column;align-items:flex-start;gap:6px;background:var(--surface);border:1px solid var(--border-soft);border-radius:var(--radius);padding:14px;cursor:pointer;font-family:inherit;color:var(--text);text-align:start;transition:border-color .15s}
+.plug-card:hover{border-color:var(--accent)}
+.plug-ico{width:34px;height:34px;border-radius:10px;background:var(--accent-tint);color:var(--accent);display:flex;align-items:center;justify-content:center}
+.plug-ico .ic{width:19px;height:19px}
+.plug-card b{font-size:13.5px}
+.plug-desc{font-size:11.5px;color:var(--muted2);line-height:1.7}
+.calc-box,.json-box{display:flex;flex-direction:column;gap:10px}
+.calc-box label,.json-box label{font-size:13px;color:var(--muted)}
+.calc-box input{width:100%;background:var(--bg2);border:1px solid var(--border);border-radius:12px;color:var(--text);font-size:15px;padding:12px 14px;font-family:ui-monospace,SFMono-Regular,Consolas,monospace}
+.calc-box input:focus{outline:none;border-color:var(--accent)}
+.calc-result{background:var(--surface);border:1px solid var(--border-soft);border-radius:12px;padding:12px 14px;font-size:16.5px;font-weight:700;text-align:center;direction:ltr;min-height:20px;word-break:break-all;line-height:1.6}
+.calc-result.err{color:var(--danger);font-size:13px;font-weight:500}
+.calc-keys{display:flex;flex-wrap:wrap;gap:6px}
+.calc-keys button{flex:1;min-width:44px;background:var(--surface);border:1px solid var(--border-soft);border-radius:10px;color:var(--text);font-size:14px;padding:9px 0;cursor:pointer;font-family:inherit}
+.calc-keys button:hover{border-color:var(--accent)}
+.calc-hint{font-size:11px;color:var(--muted2);line-height:1.9}
+.json-box textarea{width:100%;background:var(--bg2);border:1px solid var(--border);border-radius:12px;color:var(--text);font-size:12.5px;padding:10px 12px;font-family:ui-monospace,SFMono-Regular,Consolas,monospace;resize:vertical;line-height:1.6}
+.json-box textarea:focus{outline:none;border-color:var(--accent)}
+.json-msg{font-size:12.5px;min-height:18px;line-height:1.7}
+.json-msg.ok{color:var(--ok)}
+.json-msg.err{color:var(--danger)}
+.time-big{font-size:19px;font-weight:700;text-align:center;padding:8px 0 2px;line-height:2}
+.time-greg{font-size:12.5px;color:var(--muted);text-align:center;margin-bottom:12px}
+.tz-grid{display:flex;flex-direction:column;gap:8px}
+.tz-row{display:flex;justify-content:space-between;align-items:center;background:var(--surface);border:1px solid var(--border-soft);border-radius:12px;padding:10px 14px;font-size:13.5px}
+.tz-row b{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;color:var(--accent2);font-size:14px}

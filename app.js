@@ -214,7 +214,7 @@ function escapeHtml(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, (
 
 /* ---------- elements ---------- */
 /* LotUS AI Chat — v6.14 */
-const APP_VERSION = '6.16';
+const APP_VERSION = '6.17';
 const $ = (id) => document.getElementById(id);
 const messagesEl = $('messages'), welcomeEl = $('welcome'), inputEl = $('input');
 const errorBar = $('error-bar');
@@ -364,7 +364,7 @@ const FEATURES = {
   library:   { title: 'کتابخانه',      icon: 'book',   desc: 'متن‌ها، کدها و پاسخ‌های مهمی که ذخیره می‌کنی، اینجا نگه داشته می‌شن.' },
   projects:  { title: 'پروژه‌ها',      icon: 'folder', desc: 'گفتگوهای مرتبط رو توی یه پروژه گروه کن تا همیشه منظم و در دسترس بمونن.' },
   scheduled: { title: 'زمان‌بندی‌شده', icon: 'clock',  desc: 'پیام‌های زمان‌بندی‌شده؛ مثلاً هر صبح یه خلاصه خبری یا یادآوری بگیر.' },
-  plugins:   { title: 'افزونه‌ها',     icon: 'plug',   desc: 'افزونه‌ها قابلیت‌های تازه به چت‌بات اضافه می‌کنن؛ مثل جستجوی وب یا اجرای کد.' },
+  plugins:   { title: 'افزونه‌ها',      icon: 'plug',   desc: 'ابزارهای سریع سمت کاربر: ماشین‌حساب، تبدیل واحد، فرمت‌کننده JSON و تاریخ/زمان — بدون نیاز به کلید API.' },
 };
 function openFeature(id) {
   const f = FEATURES[id];
@@ -376,13 +376,16 @@ function openFeature(id) {
   const content = body.querySelector('.feature-content');
   if (id === 'images') renderImageGallery(content);
   else if (id === 'projects') renderProjectsList(content);
+  else if (id === 'library') renderLibrary(content);
+  else if (id === 'scheduled') renderScheduledList(content);
+  else if (id === 'plugins') renderPlugins(content);
   else {
     content.innerHTML = '<div class="feature-empty">' + icon(f.icon) + 'هنوز چیزی اینجا نیست.<br>به‌زودی فعال می‌شه.</div>';
   }
   $('feature-modal').classList.remove('hidden');
   document.body.classList.remove('sidebar-open');
 }
-function closeFeature() { $('feature-modal').classList.add('hidden'); }
+function closeFeature() { stopPluginTimers(); $('feature-modal').classList.add('hidden'); }
 /* ---------- پروژه‌ها (v6.12) ---------- */
 let projects = loadJSON('aichat.projects', []);
 function saveProjects() { try { localStorage.setItem('aichat.projects', JSON.stringify(projects)); } catch {} }
@@ -608,7 +611,537 @@ function projectContext(p) {
   }
   return sys.join('\n\n');
 }
-/* برآورد حجم پیام‌های API + کوتاه‌کردن تاریخچه از قدیمی‌ترین‌ها تا از سقف مدل رد نشه (جلوگیری از خطای 400) */
+
+/* ---------- toast (v6.17): اعلان کوتاه پایین صفحه ---------- */
+function toast(msg, kind) {
+  let t = document.getElementById('app-toast');
+  if (!t) { t = document.createElement('div'); t.id = 'app-toast'; t.className = 'toast'; document.body.appendChild(t); }
+  t.textContent = msg;
+  t.className = 'toast show ' + (kind || '');
+  clearTimeout(t._h);
+  t._h = setTimeout(() => { t.className = 'toast ' + (kind || ''); }, 2800);
+}
+/* تاریخ/ساعت شمسی با Intl (بدون وابستگی خارجی) */
+function fmtFaDateTime(ts) {
+  try { return new Intl.DateTimeFormat('fa-IR', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(ts)); }
+  catch { return new Date(ts).toLocaleString('fa-IR'); }
+}
+
+/* ---------- کتابخانه (v6.17): ذخیره پاسخ‌ها و کدهای مهم ---------- */
+const LS_LIBRARY = 'aichat.library.v1';
+let library = loadJSON(LS_LIBRARY, []);
+let libTab = 'all', libQuery = '';
+function saveLibrary() { try { localStorage.setItem(LS_LIBRARY, JSON.stringify(library.slice(0, 400))); } catch {} }
+function libIsSaved(convoId, content) { return library.some((it) => it.convoId === convoId && it.content === content); }
+function libItemKind(content) { return /```/.test(String(content || '')) ? 'code' : 'text'; }
+function libTitle(content) {
+  const first = String(content || '').replace(/```[\s\S]*?```/g, ' [کد] ').replace(/[#*`>_~|[\](){}]/g, ' ').replace(/\s+/g, ' ').trim();
+  return (first || 'آیتم ذخیره‌شده').slice(0, 80);
+}
+function renderLibrary(content) {
+  stopPluginTimers();
+  const tabs = [['all', 'همه'], ['text', 'متن'], ['code', 'کد']];
+  let html = '<div class="proj-bar"><div class="proj-tabs">';
+  for (const [id, label] of tabs) html += '<button class="proj-tab' + (libTab === id ? ' active' : '') + '" data-libtab="' + id + '">' + label + '</button>';
+  html += '</div><span class="lib-count" id="lib-count"></span></div>';
+  html += '<div class="proj-search"><input id="lib-q" placeholder="جستجو در کتابخانه…" value="' + escapeHtml(libQuery) + '"></div>';
+  html += '<div class="lib-list" id="lib-list"></div>';
+  content.innerHTML = html;
+  content.querySelectorAll('[data-libtab]').forEach((b) => { b.onclick = () => { libTab = b.dataset.libtab; renderLibrary(content); }; });
+  $('lib-q').oninput = (e) => { libQuery = e.target.value; paintLibList(); };
+  paintLibList();
+}
+function paintLibList() {
+  const box = $('lib-list');
+  if (!box) return;
+  const cnt = $('lib-count');
+  if (cnt) cnt.textContent = library.length ? library.length + ' آیتم' : '';
+  let list = library.slice().sort((a, b) => b.savedAt - a.savedAt);
+  if (libTab !== 'all') list = list.filter((it) => it.kind === libTab);
+  if (libQuery.trim()) { const q = libQuery.trim(); list = list.filter((it) => (it.content + ' ' + (it.convoTitle || '')).includes(q)); }
+  if (!list.length) {
+    box.innerHTML = '<div class="feature-empty">' + icon('bookmark') + (library.length ? 'چیزی پیدا نشد.' : 'هنوز چیزی در کتابخانه ذخیره نشده.<br>با دکمه‌ی نشانک (🔖) زیر هر پاسخ، متن یا کد مهم رو ذخیره کن.') + '</div>';
+    return;
+  }
+  box.innerHTML = '';
+  for (const it of list) {
+    const card = document.createElement('div');
+    card.className = 'lib-card';
+    const convoExists = !!getConvo(it.convoId);
+    card.innerHTML =
+      '<div class="lib-head"><span class="lib-kind ' + it.kind + '">' + (it.kind === 'code' ? 'کد' : 'متن') + '</span><span class="lib-date"></span></div>' +
+      '<div class="lib-title"></div>' +
+      '<pre class="lib-prev"></pre>' +
+      '<div class="lib-meta"></div>' +
+      '<div class="lib-acts">' +
+        '<button class="act-btn" data-la="copy" title="کپی">' + icon('copy') + '</button>' +
+        (convoExists ? '<button class="act-btn" data-la="open" title="باز کردن گفتگو">' + icon('chatplus') + '</button>' : '') +
+        '<button class="act-btn" data-la="del" title="حذف">' + icon('trash') + '</button>' +
+      '</div>';
+    card.querySelector('.lib-date').textContent = fmtFaDateTime(it.savedAt);
+    card.querySelector('.lib-title').textContent = libTitle(it.content);
+    card.querySelector('.lib-prev').textContent = String(it.content).replace(/```([\s\S]*?)```/g, (m, g1) => '```' + g1.slice(0, 140) + (g1.length > 140 ? '…' : '') + '```').slice(0, 500);
+    card.querySelector('.lib-meta').textContent = (it.convoTitle || 'گفتگو') + (it.model ? ' · ' + shortModelName(it.model) : '');
+    card.querySelector('[data-la="copy"]').onclick = () => {
+      navigator.clipboard.writeText(it.content).then(() => toast('کپی شد.', 'ok')).catch(() => toast('کپی نشد.', 'err'));
+    };
+    const ob = card.querySelector('[data-la="open"]');
+    if (ob) ob.onclick = () => { closeFeature(); setActiveConvo(it.convoId); };
+    card.querySelector('[data-la="del"]').onclick = () => { library = library.filter((x) => x.id !== it.id); saveLibrary(); paintLibList(); };
+    box.appendChild(card);
+  }
+}
+
+/* ---------- زمان‌بندی‌شده (v6.17): زمان‌بند سمت کاربر ---------- */
+const LS_SCHEDULED = 'aichat.scheduled.v1';
+let scheduled = loadJSON(LS_SCHEDULED, []);
+let schedBusy = false;
+const WEEKDAYS_FA = ['یکشنبه', 'دوشنبه', 'سه‌شنبه', 'چهارشنبه', 'پنجشنبه', 'جمعه', 'شنبه']; /* index = Date.getDay() */
+function saveScheduled() { try { localStorage.setItem(LS_SCHEDULED, JSON.stringify(scheduled)); } catch {} }
+function schedTimeParts(t) { const p = String(t.time || '09:00').split(':'); return [+(p[0] || 9), +(p[1] || 0)]; }
+function nextRunAfter(t, from) {
+  const now = from instanceof Date ? from : new Date(from == null ? Date.now() : from);
+  const [hh, mm] = schedTimeParts(t);
+  if (t.repeat === 'once') {
+    if (!t.date) return null;
+    const d = new Date(t.date + 'T' + (t.time || '09:00'));
+    return (isNaN(d.getTime()) || d <= now) ? null : d;
+  }
+  if (t.repeat === 'daily') {
+    const d = new Date(now.getFullYear(), now.getMonth(), now.getDate(), hh, mm, 0, 0);
+    if (d <= now) d.setDate(d.getDate() + 1);
+    return d;
+  }
+  for (let i = 0; i < 8; i++) {
+    const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() + i, hh, mm, 0, 0);
+    if (d.getDay() === (+t.weekday || 0) && d > now) return d;
+  }
+  return null;
+}
+/* آیا این تسک الان باید اجرا بشه؟ (اگه ظرف ۲ دقیقه‌ی آخر اجرا نشده باشه) */
+function schedDue(t, now) {
+  if (!t.enabled) return false;
+  now = now instanceof Date ? now : new Date(now);
+  const [hh, mm] = schedTimeParts(t);
+  if (t.repeat === 'once') {
+    if (!t.date) return false;
+    const d = new Date(t.date + 'T' + (t.time || '09:00'));
+    return !isNaN(d.getTime()) && d.getTime() <= now && !t.lastRun;
+  }
+  let cand = null;
+  if (t.repeat === 'daily') {
+    cand = new Date(now.getFullYear(), now.getMonth(), now.getDate(), hh, mm, 0, 0).getTime();
+  } else {
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() - i, hh, mm, 0, 0);
+      if (d.getDay() === (+t.weekday || 0)) { cand = d.getTime(); break; }
+    }
+    if (cand == null) return false;
+  }
+  if (cand > now) return false;
+  return !(t.lastRun && t.lastRun >= cand - 120000);
+}
+function schedDesc(t) {
+  const tm = t.time || '09:00';
+  if (t.repeat === 'daily') return 'هر روز ' + tm;
+  if (t.repeat === 'weekly') return 'هر ' + WEEKDAYS_FA[+t.weekday || 0] + '، ساعت ' + tm;
+  if (t.date) {
+    const d = new Date(t.date + 'T' + tm);
+    return isNaN(d.getTime()) ? 'یک‌بار' : fmtFaDateTime(d.getTime()) + ' (یک‌بار)';
+  }
+  return 'یک‌بار';
+}
+async function runScheduledTask(t) {
+  const cfg = settings.providers[settings.activeProvider] || {};
+  if (!(cfg.apiKey || '').trim()) { toast('برای اجرای تسک، اول به یک API وصل شو.', 'err'); return false; }
+  let c = (t.convoId && getConvo(t.convoId)) || null;
+  if (!c) {
+    c = { id: uid(), title: '⏰ ' + (t.name || 'تسک زمان‌بندی‌شده'), messages: [], provider: settings.activeProvider, model: cfg.model, createdAt: Date.now(), updatedAt: Date.now() };
+    convos.unshift(c);
+  }
+  c.messages.push({ role: 'user', content: t.prompt, scheduledFrom: t.name || '' });
+  if (activeConvoId !== c.id) { activeConvoId = c.id; saveConvos(); }
+  renderAll();
+  await runAssistant(c);
+  saveConvos();
+  return true;
+}
+async function tickScheduler() {
+  if (schedBusy || aborter) return;
+  const now = Date.now();
+  const due = scheduled.filter((t) => schedDue(t, now));
+  if (!due.length) return;
+  for (const t of due) {
+    schedBusy = true;
+    try {
+      const ok = await runScheduledTask(t);
+      if (ok) {
+        t.lastRun = Date.now();
+        if (t.repeat === 'once') t.enabled = false;
+        toast('⏰ تسک «' + (t.name || '') + '» اجرا شد.', 'ok');
+      } else if (t.repeat === 'once') t.enabled = false;
+    } catch { t.lastRun = Date.now(); if (t.repeat === 'once') t.enabled = false; }
+    schedBusy = false;
+  }
+  saveScheduled();
+  renderAll();
+  const fm = $('feature-modal');
+  if (!fm.classList.contains('hidden')) {
+    const content = fm.querySelector('.feature-content');
+    if (content && $('feature-title').textContent === 'زمان‌بندی‌شده') renderScheduledList(content);
+  }
+}
+function renderScheduledList(content) {
+  stopPluginTimers();
+  let html = '<div class="proj-bar"><span class="sched-note">⏰ تسک‌ها فقط در حالی که سایت بازه توی مرورگرت اجرا می‌شن.</span>' +
+    '<button class="btn-ghost small" id="sched-new">' + icon('plus') + ' تسک جدید</button></div>';
+  html += '<div class="sched-list" id="sched-list"></div>';
+  content.innerHTML = html;
+  $('sched-new').onclick = () => renderScheduledForm(content, null);
+  paintSchedList();
+}
+function paintSchedList() {
+  const box = $('sched-list');
+  if (!box) return;
+  if (!scheduled.length) {
+    box.innerHTML = '<div class="feature-empty">' + icon('clock') + 'هنوز تسک زمان‌بندی‌شده‌ای نداری.<br>مثلاً «خلاصه خبرهای صبح» هر روز ۹ صبح یا «یادآوری تمرین» هر شنبه.' +
+      '<div class="modal-actions" style="justify-content:center"><button class="btn-primary" id="sched-new-empty">ساختن اولین تسک</button></div></div>';
+    const b = $('sched-new-empty');
+    if (b) b.onclick = () => renderScheduledForm($('feature-body').querySelector('.feature-content'), null);
+    return;
+  }
+  box.innerHTML = '';
+  const list = scheduled.slice().sort((a, b) => (a.enabled === b.enabled) ? 0 : (a.enabled ? -1 : 1));
+  for (const t of list) {
+    const nr = nextRunAfter(t, new Date());
+    const done = t.repeat === 'once' && !t.enabled && t.lastRun;
+    const card = document.createElement('div');
+    card.className = 'sched-card' + (t.enabled ? '' : ' paused');
+    card.innerHTML =
+      '<div class="sched-head"><span class="sched-dot ' + (t.enabled ? (done ? 'done' : 'live') : 'off') + '"></span><b class="sched-name"></b>' +
+      '<span class="sched-status">' + (done ? 'انجام شد' : (t.enabled ? 'فعال' : 'متوقف')) + '</span></div>' +
+      '<div class="sched-prompt"></div>' +
+      '<div class="sched-meta"></div><div class="sched-next"></div>' +
+      '<div class="sched-acts">' +
+        '<button class="act-btn" data-sa="run" title="الان اجرا کن">' + icon('play') + '</button>' +
+        (t.repeat !== 'once' ? '<button class="act-btn" data-sa="toggle" title="' + (t.enabled ? 'توقف' : 'فعال‌سازی') + '">' + icon(t.enabled ? 'pause' : 'play') + '</button>' : '') +
+        '<button class="act-btn" data-sa="del" title="حذف">' + icon('trash') + '</button>' +
+      '</div>';
+    card.querySelector('.sched-name').textContent = t.name || 'تسک';
+    card.querySelector('.sched-prompt').textContent = t.prompt || '';
+    card.querySelector('.sched-meta').textContent = schedDesc(t) + (t.convoId ? ' · در گفتگوی مشخص' : ' · گفتگوی جدید');
+    card.querySelector('.sched-next').textContent = t.enabled && nr ? 'اجرای بعدی: ' + fmtFaDateTime(nr.getTime()) : (done && t.lastRun ? 'آخرین اجرا: ' + fmtFaDateTime(t.lastRun) : '');
+    card.querySelector('[data-sa="run"]').onclick = async () => {
+      if (schedBusy) return;
+      schedBusy = true;
+      try {
+        const ok = await runScheduledTask(t);
+        if (ok) { t.lastRun = Date.now(); if (t.repeat === 'once') t.enabled = false; saveScheduled(); toast('⏰ تسک «' + (t.name || '') + '» اجرا شد.', 'ok'); }
+      } finally { schedBusy = false; paintSchedList(); }
+    };
+    const tog = card.querySelector('[data-sa="toggle"]');
+    if (tog) tog.onclick = () => { t.enabled = !t.enabled; saveScheduled(); paintSchedList(); };
+    card.querySelector('[data-sa="del"]').onclick = () => { if (!confirm('این تسک حذف بشه؟')) return; scheduled = scheduled.filter((x) => x.id !== t.id); saveScheduled(); paintSchedList(); };
+    box.appendChild(card);
+  }
+}
+function renderScheduledForm(content, t) {
+  stopPluginTimers();
+  const isEdit = !!t;
+  let html = '<div class="proj-dhead"><button class="btn-icon" id="sched-back">' + icon('arrow-r') + '</button><b>' + (isEdit ? 'ویرایش تسک' : 'تسک زمان‌بندی‌شده جدید') + '</b></div>';
+  html += '<label>نام تسک<input id="sc-name" placeholder="مثلاً: خلاصه خبرهای صبح"></label>';
+  html += '<label>پیامی که فرستاده می‌شه<textarea id="sc-prompt" rows="3" placeholder="مثلاً: ۵ خبر مهم امروز رو به فارسی خلاصه کن"></textarea></label>';
+  html += '<div class="sched-row"><label>تکرار<select id="sc-repeat">' +
+    '<option value="once">یک‌بار</option><option value="daily">هر روز</option><option value="weekly">هفتگی</option>' +
+    '</select></label><label>ساعت<input type="time" id="sc-time" dir="ltr"></label></div>';
+  html += '<div id="sc-date-wrap"><label>تاریخ<input type="date" id="sc-date" dir="ltr"></label></div>';
+  html += '<div id="sc-week-wrap" class="hidden"><label>روز هفته<select id="sc-week">' + WEEKDAYS_FA.map((d, i) => '<option value="' + i + '">' + d + '</option>').join('') + '</select></label></div>';
+  html += '<label>مقصد<select id="sc-target"><option value="">گفتگوی جدید</option></select></label>';
+  html += '<div class="modal-actions"><button class="btn-primary" id="sc-save">ذخیره</button><button class="btn-ghost" id="sc-cancel">انصراف</button></div>';
+  content.innerHTML = html;
+  const rep = $('sc-repeat');
+  const upd = () => { $('sc-date-wrap').classList.toggle('hidden', rep.value !== 'once'); $('sc-week-wrap').classList.toggle('hidden', rep.value !== 'weekly'); };
+  rep.onchange = upd;
+  const tgt = $('sc-target');
+  for (const c of convos.slice().sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 50)) {
+    const o = document.createElement('option');
+    o.value = c.id; o.textContent = c.title || 'گفتگو';
+    tgt.appendChild(o);
+  }
+  if (isEdit) {
+    $('sc-name').value = t.name || ''; $('sc-prompt').value = t.prompt || '';
+    rep.value = t.repeat || 'once'; $('sc-time').value = t.time || '09:00';
+    $('sc-date').value = t.date || ''; $('sc-week').value = String(+t.weekday || 0);
+    tgt.value = t.convoId || '';
+  } else {
+    $('sc-time').value = '09:00';
+    $('sc-date').value = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
+  }
+  upd();
+  $('sched-back').onclick = () => renderScheduledList(content);
+  $('sc-cancel').onclick = () => renderScheduledList(content);
+  $('sc-save').onclick = () => {
+    const name = $('sc-name').value.trim(), prompt = $('sc-prompt').value.trim();
+    if (!name) { toast('نام تسک رو بنویس.', 'err'); return; }
+    if (!prompt) { toast('پیام تسک رو بنویس.', 'err'); return; }
+    const repeat = rep.value, time = $('sc-time').value || '09:00';
+    const t2 = {
+      id: t ? t.id : uid(), name, prompt, repeat, time,
+      date: repeat === 'once' ? ($('sc-date').value || '') : '',
+      weekday: repeat === 'weekly' ? +$('sc-week').value : 0,
+      convoId: tgt.value || '',
+      enabled: t ? t.enabled !== false : true,
+      lastRun: t ? t.lastRun : null,
+      createdAt: t ? t.createdAt : Date.now(),
+    };
+    if (repeat === 'once' && !t2.date) { toast('برای تسک یک‌بار، تاریخ انتخاب کن.', 'err'); return; }
+    if (isEdit) scheduled = scheduled.map((x) => (x.id === t2.id ? t2 : x));
+    else scheduled.push(t2);
+    saveScheduled();
+    toast('تسک ذخیره شد؛ به‌محض اینکه ساعتش بشه و سایت باز باشه، اجرا می‌شه.', 'ok');
+    renderScheduledList(content);
+  };
+}
+
+/* ---------- افزونه‌ها (v6.17): ابزارهای سریع سمت کاربر ---------- */
+const PLUGINS = [
+  { id: 'calc', name: 'ماشین‌حساب', icon: 'calc', desc: 'حساب‌های ریاضی + توابع مثل sin، cos، sqrt و log' },
+  { id: 'convert', name: 'تبدیل واحد', icon: 'swap', desc: 'طول، وزن، دما، حجم داده و زمان' },
+  { id: 'json', name: 'فرمت‌کننده JSON', icon: 'braces', desc: 'اعتبارسنجی، فرمت کردن یا فشرده‌سازی JSON' },
+  { id: 'time', name: 'تاریخ و زمان', icon: 'calendar', desc: 'تقویم شمسی و میلادی + ساعت مناطق مختلف' },
+];
+let pluginTimer = null;
+function stopPluginTimers() { if (pluginTimer) { clearInterval(pluginTimer); pluginTimer = null; } }
+function renderPlugins(content) {
+  stopPluginTimers();
+  let html = '<div class="plug-grid">';
+  for (const p of PLUGINS) html += '<button class="plug-card" data-plug="' + p.id + '"><span class="plug-ico">' + icon(p.icon) + '</span><b></b><span class="plug-desc"></span></button>';
+  html += '</div><p class="feature-note">این ابزارها کاملاً داخل مرورگرت اجرا می‌شن — بدون نیاز به کلید API.</p>';
+  content.innerHTML = html;
+  content.querySelectorAll('[data-plug]').forEach((b) => {
+    const p = PLUGINS.find((x) => x.id === b.dataset.plug);
+    b.querySelector('b').textContent = p.name;
+    b.querySelector('.plug-desc').textContent = p.desc;
+    b.onclick = () => renderPluginTool(content, p.id);
+  });
+}
+function renderPluginTool(content, id) {
+  stopPluginTimers();
+  const p = PLUGINS.find((x) => x.id === id);
+  const head = '<div class="proj-dhead"><button class="btn-icon" id="plug-back">' + icon('arrow-r') + '</button><b>' + p.name + '</b></div>';
+  let body = '';
+  if (id === 'calc') body = renderCalcTool();
+  else if (id === 'convert') body = renderConvertTool();
+  else if (id === 'json') body = renderJsonTool();
+  else body = renderTimeTool();
+  content.innerHTML = head + body;
+  $('plug-back').onclick = () => renderPlugins(content);
+  if (id === 'calc') wireCalc();
+  else if (id === 'convert') wireConvert();
+  else if (id === 'json') wireJson();
+  else { paintTime(); pluginTimer = setInterval(paintTime, 1000); }
+}
+/* ماشین‌حساب: پارسر صعودی بازگشتی — هیچ eval ای اجرا نمی‌شه */
+function calcEval(src) {
+  const s = String(src).replace(/[×xX]/g, '*').replace(/÷/g, '/').replace(/−/g, '-').replace(/π/g, 'pi').replace(/\s+/g, '');
+  if (!s) throw new Error('عبارت خالی است');
+  if (/[^0-9a-zA-Z+\-*/%^().,]/.test(s)) throw new Error('فقط اعداد و عملیات مجاز وارد کن');
+  const FUNCS = { sin: Math.sin, cos: Math.cos, tan: Math.tan, asin: Math.asin, acos: Math.acos, atan: Math.atan, sqrt: Math.sqrt, cbrt: Math.cbrt, abs: Math.abs, exp: Math.exp, log: Math.log, log10: Math.log10, log2: Math.log2, floor: Math.floor, ceil: Math.ceil, round: Math.round, min: Math.min, max: Math.max, pow: Math.pow, sign: Math.sign };
+  const CONSTS = { pi: Math.PI, e: Math.E, tau: 2 * Math.PI };
+  let i = 0;
+  const peek = () => s[i];
+  const eat = (c) => { if (s[i] !== c) throw new Error('انتظار ' + c + ' بود'); i++; };
+  function parseExpr() {
+    let v = parseTerm();
+    while (peek() === '+' || peek() === '-') { const op = s[i++]; const r = parseTerm(); v = op === '+' ? v + r : v - r; }
+    return v;
+  }
+  function parseTerm() {
+    let v = parseUnary();
+    while (peek() === '*' || peek() === '/' || peek() === '%') { const op = s[i++]; const r = parseUnary(); v = op === '*' ? v * r : op === '/' ? v / r : v % r; }
+    return v;
+  }
+  function parseUnary() {
+    if (peek() === '-') { i++; return -parseUnary(); }
+    if (peek() === '+') { i++; return parseUnary(); }
+    return parsePower();
+  }
+  function parsePower() {
+    const base = parseAtom();
+    if (peek() === '^') { i++; return Math.pow(base, parseUnary()); }
+    return base;
+  }
+  function parseAtom() {
+    if (peek() === '(') { i++; const v = parseExpr(); eat(')'); return v; }
+    if (/[0-9.]/.test(peek() || '')) {
+      let n = '';
+      while (i < s.length && /[0-9.]/.test(s[i])) n += s[i++];
+      const v = Number(n);
+      if (!isFinite(v)) throw new Error('عدد نامعتبر: ' + n);
+      return v;
+    }
+    if (/[a-zA-Z]/.test(peek() || '')) {
+      let n = '';
+      while (i < s.length && /[a-zA-Z0-9]/.test(s[i])) n += s[i++];
+      if (peek() === '(') {
+        i++;
+        const args = [parseExpr()];
+        while (peek() === ',') { i++; args.push(parseExpr()); }
+        eat(')');
+        const f = FUNCS[n];
+        if (!f) throw new Error('تابع ناشناخته: ' + n);
+        return f.apply(null, args);
+      }
+      if (n in CONSTS) return CONSTS[n];
+      if (n in FUNCS) throw new Error('توابع باید پرانتز داشته باشند: ' + n + '(…)');
+      throw new Error('ناشناخته: ' + n);
+    }
+    throw new Error('نشانه‌ی عجیب: ' + (peek() || 'پایان عبارت'));
+  }
+  const result = parseExpr();
+  if (i < s.length) throw new Error('پایان عبارت قابل فهم نبود');
+  if (typeof result !== 'number' || isNaN(result)) throw new Error('نتیجه عددی نیست');
+  if (!isFinite(result)) throw new Error('نتیجه بی‌نهایت است (تقسیم بر صفر؟)');
+  return result;
+}
+function fmtNum(v) {
+  if (v === 0) return '0';
+  const a = Math.abs(v);
+  if (a >= 1e15 || a < 1e-9) return v.toExponential(6).replace(/\.?0+e/, 'e');
+  return String(Math.round(v * 1e12) / 1e12);
+}
+function renderCalcTool() {
+  let h = '<div class="calc-box"><input id="calc-in" dir="ltr" placeholder="مثلاً: (2+3)*sqrt(16)" autocomplete="off" spellcheck="false">';
+  h += '<div class="calc-result" id="calc-res">= ?</div><div class="calc-keys">';
+  for (const k of ['pi', 'sqrt', 'sin', 'cos', 'log', '(', ')', '^', '/', '*', '-', '+']) h += '<button data-ck="' + k + '">' + (k === 'pi' ? 'π' : k) + '</button>';
+  h += '<button data-ck="clear">C</button></div>';
+  h += '<div class="calc-hint">توابع: sin cos tan asin acos atan sqrt cbrt abs exp log log10 log2 floor ceil round min max pow sign — ثابت‌ها: pi ، e ، tau — مثال: 2^10 ، sin(pi/2) ، sqrt(2)*100</div></div>';
+  return h;
+}
+function wireCalc() {
+  const inp = $('calc-in'), res = $('calc-res');
+  const upd = () => {
+    if (!inp.value.trim()) { res.textContent = '= ?'; res.classList.remove('err'); return; }
+    try { res.textContent = '= ' + fmtNum(calcEval(inp.value)); res.classList.remove('err'); }
+    catch (e) { res.textContent = e.message || 'خطا'; res.classList.add('err'); }
+  };
+  inp.addEventListener('input', upd);
+  document.querySelectorAll('[data-ck]').forEach((b) => {
+    b.onclick = () => {
+      if (b.dataset.ck === 'clear') { inp.value = ''; }
+      else if (b.dataset.ck === 'sqrt' || b.dataset.ck === 'sin' || b.dataset.ck === 'cos' || b.dataset.ck === 'log') inp.value += b.dataset.ck + '(';
+      else inp.value += b.dataset.ck;
+      inp.focus(); upd();
+    };
+  });
+}
+/* تبدیل واحد */
+const UNITS = {
+  length: { name: 'طول', units: { mm: 0.001, cm: 0.01, m: 1, km: 1000, in: 0.0254, ft: 0.3048, mi: 1609.344 } },
+  weight: { name: 'وزن', units: { mg: 1e-6, g: 0.001, kg: 1, t: 1000, oz: 0.028349523125, lb: 0.45359237 } },
+  temp:   { name: 'دما', units: { c: '°C', f: '°F', k: 'K' } },
+  data:   { name: 'حجم داده', units: { b: 1, kb: 1e3, mb: 1e6, gb: 1e9, tb: 1e12 } },
+  time:   { name: 'زمان', units: { s: 1, min: 60, h: 3600, d: 86400, wk: 604800 } },
+};
+function convertValue(v, cat, from, to) {
+  if (cat === 'temp') {
+    let c;
+    if (from === 'c') c = v;
+    else if (from === 'f') c = (v - 32) * 5 / 9;
+    else c = v - 273.15;
+    if (to === 'c') return c;
+    if (to === 'f') return c * 9 / 5 + 32;
+    return c + 273.15;
+  }
+  const u = UNITS[cat].units;
+  return (v * u[from]) / u[to];
+}
+function renderConvertTool() {
+  const cats = Object.keys(UNITS).map((k) => '<option value="' + k + '">' + UNITS[k].name + '</option>').join('');
+  let h = '<div class="calc-box"><label>دسته<select id="cv-cat">' + cats + '</select></label>';
+  h += '<input id="cv-val" dir="ltr" type="number" step="any" placeholder="مقدار" autocomplete="off">';
+  h += '<div class="sched-row"><label>از<select id="cv-from"></select></label><button class="act-btn" id="cv-swap" title="جابجا کن" style="align-self:center">' + icon('swap') + '</button><label>به<select id="cv-to"></select></label></div>';
+  h += '<div class="calc-result" id="cv-res">= ?</div><div class="calc-hint">طول: mm cm m km in ft mi — وزن: mg g kg t oz lb — دما: °C °F K — داده: b kb mb gb tb — زمان: s min h d wk</div></div>';
+  return h;
+}
+function wireConvert() {
+  const cat = $('cv-cat'), from = $('cv-from'), to = $('cv-to'), val = $('cv-val'), res = $('cv-res');
+  const fillUnits = () => {
+    const u = UNITS[cat.value].units;
+    const keys = Object.keys(u);
+    from.innerHTML = keys.map((k) => '<option value="' + k + '">' + k + '</option>').join('');
+    to.innerHTML = keys.map((k) => '<option value="' + k + '">' + k + '</option>').join('');
+    from.selectedIndex = 0;
+    to.selectedIndex = Math.min(1, keys.length - 1);
+  };
+  const upd = () => {
+    const v = parseFloat(val.value);
+    if (isNaN(v)) { res.textContent = '= ?'; res.classList.remove('err'); return; }
+    try {
+      const r = convertValue(v, cat.value, from.value, to.value);
+      res.textContent = fmtNum(v) + ' ' + from.value + '  =  ' + fmtNum(r) + ' ' + to.value;
+      res.classList.remove('err');
+    } catch (e) { res.textContent = e.message; res.classList.add('err'); }
+  };
+  cat.onchange = () => { fillUnits(); upd(); };
+  from.onchange = upd; to.onchange = upd; val.addEventListener('input', upd);
+  $('cv-swap').onclick = () => { const t = from.value; from.value = to.value; to.value = t; upd(); };
+  fillUnits();
+}
+/* ابزار JSON */
+function renderJsonTool() {
+  return '<div class="json-box"><textarea id="json-in" dir="ltr" rows="7" placeholder=\'{ "name": "نمونه" }\' spellcheck="false"></textarea>' +
+    '<div class="calc-keys"><button data-js="fmt">فرمت کن</button><button data-js="min">فشرده کن</button><button data-js="copy">کپی نتیجه</button></div>' +
+    '<textarea id="json-out" dir="ltr" rows="5" readonly placeholder="نتیجه اینجا ظاهر می‌شه"></textarea>' +
+    '<div class="json-msg" id="json-msg"></div></div>';
+}
+function wireJson() {
+  const inp = $('json-in'), out = $('json-out'), msg = $('json-msg');
+  const run = (mode) => {
+    msg.className = 'json-msg';
+    try {
+      if (!inp.value.trim()) { msg.textContent = 'اول JSON رو وارد کن.'; msg.classList.add('err'); return; }
+      const parsed = JSON.parse(inp.value);
+      out.value = mode === 'min' ? JSON.stringify(parsed) : JSON.stringify(parsed, null, 2);
+      msg.textContent = '✅ JSON معتبر است.';
+      msg.classList.add('ok');
+    } catch (e) {
+      out.value = '';
+      msg.textContent = '❌ خطای JSON: ' + (e.message || '');
+      msg.classList.add('err');
+    }
+  };
+  document.querySelectorAll('[data-js="fmt"]').forEach((b) => { b.onclick = () => run('fmt'); });
+  document.querySelectorAll('[data-js="min"]').forEach((b) => { b.onclick = () => run('min'); });
+  document.querySelectorAll('[data-js="copy"]').forEach((b) => {
+    b.onclick = () => {
+      if (!out.value) { msg.textContent = 'نتیجه‌ای برای کپی نیست.'; msg.className = 'json-msg err'; return; }
+      navigator.clipboard.writeText(out.value).then(() => { msg.textContent = '✅ کپی شد.'; msg.className = 'json-msg ok'; }).catch(() => { msg.textContent = 'کپی نشد.'; msg.className = 'json-msg err'; });
+    };
+  });
+}
+/* تاریخ و زمان */
+const TZS = [['Asia/Tehran', 'تهران'], ['America/New_York', 'نیویورک'], ['Europe/London', 'لندن'], ['Asia/Tokyo', 'توکیو'], ['UTC', 'وقت جهانی UTC']];
+function renderTimeTool() {
+  return '<div class="time-big" id="tm-big"></div><div class="time-greg" id="tm-greg"></div><div class="tz-grid" id="tm-tz"></div>';
+}
+function paintTime() {
+  const b = $('tm-big');
+  if (!b) { stopPluginTimers(); return; }
+  const now = new Date();
+  try { b.textContent = new Intl.DateTimeFormat('fa-IR', { dateStyle: 'full', timeStyle: 'medium' }).format(now); }
+  catch { b.textContent = now.toLocaleString('fa-IR'); }
+  try { $('tm-greg').textContent = new Intl.DateTimeFormat('en-GB', { dateStyle: 'full', timeStyle: 'medium' }).format(now); }
+  catch { $('tm-greg').textContent = now.toISOString(); }
+  const tz = $('tm-tz');
+  if (tz) {
+    tz.innerHTML = TZS.map(([tzid, name]) => {
+      let s = '—';
+      try { s = new Intl.DateTimeFormat('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false, timeZone: tzid }).format(now); } catch {}
+      return '<div class="tz-row"><span>' + name + '</span><b dir="ltr">' + s + '</b></div>';
+    }).join('');
+  }
+}
 function apiChars(m) {
   const c = m.content;
   if (typeof c === 'string') return c.length;
@@ -868,6 +1401,8 @@ function buildAssistantEl(m, idx, isLast) {
   const wrap = document.createElement('div');
   wrap.className = 'msg assistant';
   wrap.dataset.idx = idx;
+  const cv = activeConvo();
+  const libSaved = cv ? libIsSaved(cv.id, m.content) : false;
   const pid = m.provider || settings.activeProvider;
   const plabel = (settings.providers[pid] || {}).label || pid;
   const head = document.createElement('div');
@@ -881,6 +1416,7 @@ function buildAssistantEl(m, idx, isLast) {
   actions.className = 'msg-actions';
   actions.innerHTML =
     '<button class="act-btn" data-act="copy" title="کپی">' + icon('copy') + '</button>' +
+    '<button class="act-btn' + (libSaved ? ' on' : '') + '" data-act="save" title="ذخیره در کتابخانه">' + icon('bookmark') + '</button>' +
     '<button class="act-btn" data-act="speak" title="بخون">' + icon('speak') + '</button>' +
     '<button class="act-btn" data-act="regen" title="تلاش مجدد">' + icon('refresh') + '</button>' +
     '<button class="act-btn' + (m.rating === 1 ? ' on' : '') + '" data-act="like" title="خوب بود">' + icon('thumbup') + '</button>' +
@@ -2030,6 +2566,14 @@ messagesEl.addEventListener('click', (e) => {
       btn.innerHTML = icon('check'); btn.classList.add('on');
       setTimeout(() => { btn.innerHTML = icon('copy'); btn.classList.remove('on'); }, 1400);
     }).catch(() => showError('کپی نشد؛ دستی انتخاب و کپی کن.'));
+  } else if (act === 'save') {
+    const exists = libIsSaved(c.id, m.content);
+    if (exists) library = library.filter((it) => !(it.convoId === c.id && it.content === m.content));
+    else library.push({ id: uid(), content: m.content, convoId: c.id, convoTitle: c.title, provider: m.provider, model: m.model, savedAt: Date.now(), kind: libItemKind(m.content) });
+    saveLibrary();
+    btn.classList.toggle('on', !exists);
+    btn.title = exists ? 'حذف از کتابخانه' : 'ذخیره در کتابخانه';
+    toast(exists ? 'از کتابخانه حذف شد.' : '🔖 در کتابخانه ذخیره شد.', 'ok');
   } else if (act === 'speak') {
     speakText(m.content);
   } else if (act === 'regen') {
@@ -2074,3 +2618,6 @@ migratePreviewModels();
 const _av = $('app-version'); if (_av) _av.textContent = 'نسخه برنامه: ' + APP_VERSION;
 renderAll();
 autoresize();
+/* زمان‌بند تسک‌ها: هر ۱۰ ثانیه یک‌بار چک می‌کنه (فقط وقتی سایت بازه) */
+setInterval(tickScheduler, 10000);
+setTimeout(tickScheduler, 2500);
