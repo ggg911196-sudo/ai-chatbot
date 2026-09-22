@@ -214,8 +214,8 @@ function shortModelName(m) {
 function escapeHtml(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, (m) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m])); }
 
 /* ---------- elements ---------- */
-/* LotUS AI Chat — v6.13 */
-const APP_VERSION = '6.13';
+/* LotUS AI Chat — v6.14 */
+const APP_VERSION = '6.14';
 const $ = (id) => document.getElementById(id);
 const messagesEl = $('messages'), welcomeEl = $('welcome'), inputEl = $('input');
 const errorBar = $('error-bar');
@@ -1084,8 +1084,17 @@ function renderMsLabel() {
 function openModelMenu() {
   const menu = $('model-menu');
   menu.innerHTML = '';
-  for (const id of visibleProviders()) {
-    if (id === 'custom') continue;
+  /* فقط ارائه‌دهنده‌هایی که کلید دارن (وصلن) نشون داده می‌شن */
+  const connected = visibleProviders().filter((id) => id !== 'custom' && (settings.providers[id].apiKey || '').trim());
+  if (!connected.length) {
+    const s = document.createElement('div');
+    s.className = 'mm-empty';
+    s.textContent = 'هنوز به هیچ ارائه‌دهنده‌ای وصل نیستی — از تنظیمات کلید API رو وارد کن.';
+    menu.appendChild(s);
+    menu.classList.remove('hidden');
+    return;
+  }
+  for (const id of connected) {
     const p = settings.providers[id];
     const g = document.createElement('div');
     g.className = 'mm-group';
