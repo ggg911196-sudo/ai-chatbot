@@ -112,7 +112,7 @@ function renderThemePicker() {
 /* دریافت لیست مدل‌ها — برای جمینای از endpoint اصلی گوگل (نسخه سازگار OpenAI، ‎/models‎ ندارد) */
 async function probeModels(pid, base, key) {
   if (pid === 'gemini') {
-    const res = await fetch('https://generativelanguage.googleapis.com/v1beta/models?key=' + encodeURIComponent(key));
+    const res = await fetch('https://generativelanguage.googleapis.com/v1beta/models', { headers: { 'x-goog-api-key': key } });
     if (!res.ok) throw new Error('خطای ' + res.status);
     const data = await res.json();
     return (data.models || [])
@@ -214,14 +214,20 @@ function shortModelName(m) {
 function escapeHtml(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, (m) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m])); }
 
 /* ---------- elements ---------- */
-/* LotUS AI Chat — v6.11 */
-const APP_VERSION = '6.11';
+/* LotUS AI Chat — v6.13 */
+const APP_VERSION = '6.13';
 const $ = (id) => document.getElementById(id);
 const messagesEl = $('messages'), welcomeEl = $('welcome'), inputEl = $('input');
 const errorBar = $('error-bar');
 
 /* ---------- markdown ---------- */
 marked.setOptions({ breaks: true, gfm: true });
+/* لینک‌های خروجی مارک‌داون: جلوگیری از tabnabbing */
+try {
+  DOMPurify.addHook('afterSanitizeAttributes', (n) => {
+    if (n.tagName === 'A' && n.getAttribute('target') === '_blank') n.setAttribute('rel', 'noopener noreferrer');
+  });
+} catch {}
 function renderMarkdown(src) {
   const html = marked.parse(src || '');
   const clean = DOMPurify.sanitize(html);
@@ -370,6 +376,7 @@ function openFeature(id) {
   body.querySelector('.feature-desc').textContent = f.desc;
   const content = body.querySelector('.feature-content');
   if (id === 'images') renderImageGallery(content);
+  else if (id === 'projects') renderProjectsList(content);
   else {
     content.innerHTML = '<div class="feature-empty">' + icon(f.icon) + 'هنوز چیزی اینجا نیست.<br>به‌زودی فعال می‌شه.</div>';
   }
@@ -377,6 +384,226 @@ function openFeature(id) {
   document.body.classList.remove('sidebar-open');
 }
 function closeFeature() { $('feature-modal').classList.add('hidden'); }
+/* ---------- پروژه‌ها (v6.12) ---------- */
+let projects = loadJSON('aichat.projects', []);
+function saveProjects() { try { localStorage.setItem('aichat.projects', JSON.stringify(projects)); } catch {} }
+function getProject(id) { return projects.find((p) => p.id === id); }
+function projectOfConvo(cid) { return projects.find((p) => (p.chatIds || []).includes(cid)); }
+let projTab = 'all', projQuery = '';
+const PROJ_COLORS = ['#e8e8e8', '#ffd6d6', '#ffe9c4', '#d9f0d0', '#cfe4ff', '#e3d4ff'];
+
+function renderProjectsList(content) {
+  const tabs = [['all', 'همه'], ['mine', 'ساخته‌شده توسط شما'], ['shared', 'به اشتراک‌گذاشته‌شده با شما']];
+  let html = '<div class="proj-bar"><div class="proj-tabs">';
+  for (const [id, label] of tabs) html += '<button class="proj-tab' + (projTab === id ? ' active' : '') + '" data-tab="' + id + '">' + label + '</button>';
+  html += '</div><button class="btn-icon" id="proj-new-top" title="پروژه جدید">' + icon('plus') + '</button></div>';
+  html += '<div class="proj-list" id="proj-list"></div>';
+  html += '<div class="proj-search"><input id="proj-q" placeholder="جستجو" value="' + escapeHtml(projQuery) + '"></div>';
+  content.innerHTML = html;
+  content.querySelectorAll('.proj-tab').forEach((b) => { b.onclick = () => { projTab = b.dataset.tab; renderProjectsList(content); }; });
+  $('proj-new-top').onclick = () => renderProjectForm(content, null);
+  $('proj-q').oninput = (e) => { projQuery = e.target.value; paintProjList(); };
+  paintProjList();
+}
+function paintProjList() {
+  const box = $('proj-list');
+  if (!box) return;
+  let list = projects.slice().sort((a, b) => b.createdAt - a.createdAt);
+  if (projTab === 'shared') {
+    box.innerHTML = '<div class="feature-empty">' + icon('folder') + 'اشتراک‌گذاری پروژه‌ها به حساب کاربری نیاز داره و فعلاً پشتیبانی نمی‌شه.</div>';
+    return;
+  }
+  if (projQuery.trim()) list = list.filter((p) => (p.name + ' ' + (p.desc || '')).includes(projQuery.trim()));
+  if (!list.length) {
+    box.innerHTML = '<div class="feature-empty">' + icon('folder') +
+      '<div class="proj-empty-title">اولین پروژه‌ات رو شروع کن</div>' +
+      '<div class="proj-empty-sub">پروژه‌ها بهت کمک می‌کنن چت‌ها، فایل‌ها و ابزارها رو یه جا منظم کنی</div>' +
+      '<div class="modal-actions" style="justify-content:center"><button class="btn-primary" id="proj-new-empty">پروژه جدید</button></div></div>';
+    const b = $('proj-new-empty');
+    if (b) b.onclick = () => renderProjectForm($('feature-body').querySelector('.feature-content'), null);
+    return;
+  }
+  box.innerHTML = '';
+  for (const p of list) {
+    const card = document.createElement('button');
+    card.className = 'proj-card';
+    const dot = document.createElement('span');
+    dot.className = 'proj-dot'; dot.style.background = p.color || '#e8e8e8';
+    const info = document.createElement('span');
+    info.className = 'proj-info';
+    const nm = document.createElement('span'); nm.className = 'proj-name'; nm.textContent = p.name;
+    info.appendChild(nm);
+    if (p.desc) { const ds = document.createElement('span'); ds.className = 'proj-desc'; ds.textContent = p.desc; info.appendChild(ds); }
+    const meta = document.createElement('span'); meta.className = 'proj-meta';
+    meta.textContent = (p.chatIds || []).length + ' گفتگو · ' + (p.files || []).length + ' فایل';
+    info.appendChild(meta);
+    card.appendChild(dot); card.appendChild(info);
+    card.appendChild(icon('chev-l'));
+    card.onclick = () => renderProjectDetail($('feature-body').querySelector('.feature-content'), p.id);
+    box.appendChild(card);
+  }
+}
+function renderProjectForm(content, p) {
+  const isNew = !p;
+  p = p || { name: '', desc: '', color: PROJ_COLORS[0] };
+  let sel = p.color || PROJ_COLORS[0];
+  content.innerHTML =
+    '<div class="proj-form"><h3>' + (isNew ? 'پروژه جدید' : 'ویرایش پروژه') + '</h3>' +
+    '<label>نام پروژه<input id="pf-name" maxlength="60" value="' + escapeHtml(p.name) + '" placeholder="مثلاً: پایان‌نامه"></label>' +
+    '<label>توضیح (اختیاری)<input id="pf-desc" maxlength="140" value="' + escapeHtml(p.desc || '') + '" placeholder="این پروژه برای چیه؟"></label>' +
+    '<div class="pf-colors" id="pf-colors"></div>' +
+    '<div class="modal-actions"><button class="btn-ghost" id="pf-cancel">انصراف</button>' +
+    '<button class="btn-primary" id="pf-save">' + (isNew ? 'ساخت پروژه' : 'ذخیره') + '</button></div></div>';
+  const cw = $('pf-colors');
+  for (const c of PROJ_COLORS) {
+    const d = document.createElement('button');
+    d.className = 'pf-color' + (c === sel ? ' sel' : '');
+    d.style.background = c; d.dataset.c = c;
+    d.onclick = () => { sel = c; cw.querySelectorAll('.pf-color').forEach((x) => x.classList.toggle('sel', x.dataset.c === c)); };
+    cw.appendChild(d);
+  }
+  $('pf-cancel').onclick = () => isNew ? renderProjectsList(content) : renderProjectDetail(content, p.id);
+  $('pf-save').onclick = () => {
+    const name = $('pf-name').value.trim();
+    if (!name) { $('pf-name').focus(); return; }
+    if (isNew) {
+      const np = { id: uid(), name, desc: $('pf-desc').value.trim(), color: sel, createdAt: Date.now(), instructions: '', chatIds: [], files: [] };
+      projects.push(np); saveProjects();
+      renderProjectDetail(content, np.id);
+    } else {
+      const cur = getProject(p.id);
+      if (cur) { cur.name = name; cur.desc = $('pf-desc').value.trim(); cur.color = sel; saveProjects(); }
+      renderProjectDetail(content, p.id);
+    }
+  };
+  setTimeout(() => $('pf-name').focus(), 50);
+}
+function renderProjectDetail(content, pid) {
+  const p = getProject(pid);
+  if (!p) { renderProjectsList(content); return; }
+  content.innerHTML =
+    '<div class="proj-detail">' +
+    '<div class="proj-dhead"><button class="btn-icon" id="pd-back">' + icon('arrow-r') + '</button>' +
+    '<span class="proj-dot" id="pd-dot"></span>' +
+    '<div class="pd-title"><div class="pd-name" id="pd-name"></div><div class="pd-sub" id="pd-sub"></div></div>' +
+    '<button class="btn-icon" id="pd-edit" title="ویرایش">' + icon('edit') + '</button>' +
+    '<button class="btn-icon danger" id="pd-del" title="حذف پروژه">' + icon('trash') + '</button></div>' +
+    '<div class="pd-sec"><div class="pd-sec-t">دستورالعمل سفارشی</div>' +
+    '<p class="note">این متن به‌عنوان راهنمای رفتاری، به همه گفتگوهای این پروژه اضافه می‌شه.</p>' +
+    '<textarea id="pd-inst" rows="3" placeholder="مثلاً: همیشه خلاصه و با مثال جواب بده…"></textarea>' +
+    '<div class="modal-actions"><button class="btn-ghost small" id="pd-inst-save">ذخیره دستورالعمل</button></div></div>' +
+    '<div class="pd-sec"><div class="pd-sec-t">فایل‌ها <span class="pd-count" id="pd-fcount"></span></div>' +
+    '<p class="note">فایل‌های متنی و عکس‌ها به‌عنوان زمینه مشترک به همه گفتگوهای پروژه اضافه می‌شن.</p>' +
+    '<div id="pd-files"></div>' +
+    '<div class="modal-actions"><button class="btn-ghost small" id="pd-addfile">افزودن فایل</button>' +
+    '<input type="file" id="pd-fileinput" class="hidden" multiple></div></div>' +
+    '<div class="pd-sec"><div class="pd-sec-t">گفتگوها <span class="pd-count" id="pd-ccount"></span></div>' +
+    '<div id="pd-chats"></div>' +
+    '<div class="modal-actions"><button class="btn-ghost small" id="pd-addchat">افزودن گفتگو</button></div></div>' +
+    '</div>';
+  $('pd-dot').style.background = p.color || '#e8e8e8';
+  $('pd-name').textContent = p.name;
+  $('pd-sub').textContent = p.desc || '';
+  $('pd-inst').value = p.instructions || '';
+  $('pd-back').onclick = () => renderProjectsList(content);
+  $('pd-edit').onclick = () => renderProjectForm(content, p);
+  const delBtn = $('pd-del');
+  delBtn.onclick = () => {
+    if (delBtn.dataset.arm) { projects = projects.filter((x) => x.id !== p.id); saveProjects(); renderProjectsList(content); }
+    else { delBtn.dataset.arm = '1'; delBtn.classList.add('armed'); setTimeout(() => { delBtn.dataset.arm = ''; delBtn.classList.remove('armed'); }, 2500); }
+  };
+  delBtn.title = 'برای حذف، دو بار بزن';
+  $('pd-inst-save').onclick = () => { p.instructions = $('pd-inst').value.trim(); saveProjects(); $('pd-inst-save').textContent = 'ذخیره شد ✓'; setTimeout(() => { const b = $('pd-inst-save'); if (b) b.textContent = 'ذخیره دستورالعمل'; }, 1200); };
+  paintProjectFiles(p);
+  paintProjectChats(p, content);
+  $('pd-addfile').onclick = () => $('pd-fileinput').click();
+  $('pd-fileinput').onchange = (e) => addProjectFiles(p, e.target.files, content);
+  $('pd-addchat').onclick = () => renderChatPicker(content, p);
+}
+function paintProjectFiles(p) {
+  const box = $('pd-files');
+  if (!box) return;
+  $('pd-fcount').textContent = ' (' + (p.files || []).length + ')';
+  box.innerHTML = '';
+  if (!(p.files || []).length) { box.innerHTML = '<div class="pd-empty">فایلی اضافه نشده.</div>'; return; }
+  for (const f of p.files) {
+    const row = document.createElement('div');
+    row.className = 'pfile-row';
+    const nm = document.createElement('span'); nm.className = 'pfile-name'; nm.textContent = f.name;
+    const sz = document.createElement('span'); sz.className = 'pfile-size'; sz.textContent = f.kind === 'text' ? 'متن' : 'عکس';
+    const del = document.createElement('button'); del.className = 'btn-icon small danger'; del.innerHTML = icon('x');
+    del.onclick = () => { p.files = p.files.filter((x) => x.id !== f.id); saveProjects(); paintProjectFiles(p); };
+    row.appendChild(nm); row.appendChild(sz); row.appendChild(del);
+    box.appendChild(row);
+  }
+}
+async function addProjectFiles(p, fileList, content) {
+  const files = Array.from(fileList || []);
+  for (const f of files) {
+    if ((p.files || []).length >= 8) { showError('حداکثر ۸ فایل در هر پروژه.'); break; }
+    if (f.size > 8 * 1024 * 1024) { showError('«' + f.name + '» بزرگ‌تر از ۸ مگابایته.'); continue; }
+    try {
+      const rec = { id: uid(), name: f.name };
+      if ((f.type || '').startsWith('image/')) { rec.kind = 'image'; rec.dataUrl = await fileToDataUrl(f, 768); }
+      else if (isTextFile(f)) { rec.kind = 'text'; rec.text = await readTextFile(f, 15000); }
+      else { showError('«' + f.name + '» پشتیبانی نمی‌شه (فقط متن و عکس).'); continue; }
+      p.files = p.files || [];
+      p.files.push(rec);
+    } catch { showError('خواندن «' + f.name + '» ممکن نشد.'); }
+  }
+  saveProjects();
+  renderProjectDetail(content, p.id);
+}
+function paintProjectChats(p, content) {
+  const box = $('pd-chats');
+  if (!box) return;
+  $('pd-ccount').textContent = ' (' + (p.chatIds || []).length + ')';
+  box.innerHTML = '';
+  const chats = (p.chatIds || []).map(getConvo).filter(Boolean);
+  if (!chats.length) { box.innerHTML = '<div class="pd-empty">گفتگویی اضافه نشده.</div>'; return; }
+  for (const c of chats) {
+    const row = document.createElement('button');
+    row.className = 'pchat-row';
+    const t = document.createElement('span'); t.className = 'pchat-t'; t.textContent = c.title || 'گفتگوی بدون عنوان';
+    const n = document.createElement('span'); n.className = 'pchat-n'; n.textContent = (c.messages || []).length + ' پیام';
+    row.appendChild(t); row.appendChild(n);
+    row.onclick = () => { setActiveConvo(c.id); closeFeature(); };
+    const rm = document.createElement('span');
+    rm.className = 'pchat-rm'; rm.innerHTML = icon('x'); rm.title = 'حذف از پروژه';
+    rm.onclick = (e) => { e.stopPropagation(); p.chatIds = p.chatIds.filter((x) => x !== c.id); saveProjects(); paintProjectChats(p, content); };
+    row.appendChild(rm);
+    box.appendChild(row);
+  }
+}
+function renderChatPicker(content, p) {
+  const avail = convos.filter((c) => !(p.chatIds || []).includes(c.id));
+  content.innerHTML =
+    '<div class="proj-detail"><div class="proj-dhead"><button class="btn-icon" id="cp-back">' + icon('arrow-r') + '</button>' +
+    '<div class="pd-title"><div class="pd-name">افزودن گفتگو</div><div class="pd-sub">به «' + escapeHtml(p.name) + '»</div></div></div>' +
+    '<div id="cp-list"></div></div>';
+  $('cp-back').onclick = () => renderProjectDetail(content, p.id);
+  const box = $('cp-list');
+  if (!avail.length) { box.innerHTML = '<div class="pd-empty">همه گفتگوها قبلاً اضافه شدن یا گفتگویی نیست.</div>'; return; }
+  for (const c of avail) {
+    const row = document.createElement('button');
+    row.className = 'pchat-row';
+    const t = document.createElement('span'); t.className = 'pchat-t'; t.textContent = c.title || 'گفتگوی بدون عنوان';
+    const add = document.createElement('span'); add.className = 'pchat-add'; add.textContent = 'افزودن';
+    row.appendChild(t); row.appendChild(add);
+    row.onclick = () => { p.chatIds = p.chatIds || []; p.chatIds.push(c.id); saveProjects(); renderProjectDetail(content, p.id); };
+    box.appendChild(row);
+  }
+}
+/* تزریق زمینه پروژه به پیام‌های API */
+function projectContext(p) {
+  const sys = [];
+  if (p.instructions && p.instructions.trim()) sys.push('دستورالعمل پروژه «' + p.name + '»:\n' + p.instructions.trim());
+  for (const f of (p.files || [])) {
+    if (f.kind === 'text' && f.text) sys.push('📄 محتوای فایل «' + f.name + '» (زمینه مشترک پروژه):\n```\n' + String(f.text).slice(0, 15000) + '\n```');
+  }
+  return sys.join('\n\n');
+}
+
 /* ---------- گالری مشترک تصاویر (v6.9) ---------- */
 const LS_GALLERY = 'aichat.gallery';
 const LS_GCONSENT = 'aichat.gallery.consent';
@@ -485,7 +712,13 @@ async function renderImageGallery(content) {
         cap.className = 'g-cap'; cap.textContent = r.caption;
         d.appendChild(cap);
       }
-      d.onclick = () => window.open(r.url, '_blank');
+      d.onclick = () => {
+        try {
+          const u = new URL(r.url, location.href);
+          if (u.protocol !== 'https:' && !(u.protocol === 'data:' && /^data:image\//i.test(r.url))) return;
+        } catch { return; }
+        window.open(r.url, '_blank', 'noopener');
+      };
       grid.appendChild(d);
     }
     content.innerHTML = '';
@@ -497,6 +730,52 @@ async function renderImageGallery(content) {
   } catch (e) {
     content.innerHTML = '<div class="feature-empty">' + icon('image') + 'خطا در بارگذاری گالری.<br>اتصال اینترنت یا تنظیمات سرور رو بررسی کن.</div>';
   }
+}
+
+/* ---------- safe backup import: strip dangerous keys + shape check ---------- */
+function safeParseBackup(text) {
+  const d = JSON.parse(text);
+  if (!d || typeof d !== 'object' || Array.isArray(d)) throw new Error('bad shape');
+  const strip = (o) => {
+    if (!o || typeof o !== 'object') return o;
+    if (Array.isArray(o)) return o.map(strip);
+    const out = {};
+    for (const k of Object.keys(o)) {
+      if (k === '__proto__' || k === 'constructor' || k === 'prototype') continue;
+      out[k] = strip(o[k]);
+    }
+    return out;
+  };
+  const clean = strip(d);
+  if (clean.settings && (typeof clean.settings !== 'object' || Array.isArray(clean.settings))) throw new Error('bad shape');
+  if (clean.convos && !Array.isArray(clean.convos)) throw new Error('bad shape');
+  if (clean.stats && (typeof clean.stats !== 'object' || Array.isArray(clean.stats))) throw new Error('bad shape');
+  /* اعتبارسنجی عمیق: baseUrlها فقط https (یا localhost) تا کلید به سرور مهاجم نرود */
+  const okUrl = (u) => {
+    if (typeof u !== 'string' || !u) return true;
+    try {
+      const p = new URL(u);
+      if (p.protocol === 'https:') return true;
+      if (p.protocol === 'http:' && /^(localhost|127\.0\.0\.1|\[::1\])$/.test(p.hostname)) return true;
+      return false;
+    } catch { return false; }
+  };
+  if (clean.settings && clean.settings.providers && typeof clean.settings.providers === 'object') {
+    for (const k of Object.keys(clean.settings.providers)) {
+      if (!PROVIDER_IDS.includes(k)) { delete clean.settings.providers[k]; continue; }
+      const pr = clean.settings.providers[k];
+      if (!pr || typeof pr !== 'object') { delete clean.settings.providers[k]; continue; }
+      if (!okUrl(pr.baseUrl)) throw new Error('bad baseUrl');
+      if (pr.apiKey != null && typeof pr.apiKey !== 'string') throw new Error('bad shape');
+      if (pr.model != null && typeof pr.model !== 'string') throw new Error('bad shape');
+    }
+  }
+  if (Array.isArray(clean.convos)) {
+    for (const c of clean.convos) {
+      if (!c || typeof c !== 'object' || typeof c.id !== 'string' || !Array.isArray(c.messages)) throw new Error('bad shape');
+    }
+  }
+  return clean;
 }
 
 /* ---------- chat rendering ---------- */
@@ -981,36 +1260,19 @@ function migratePreviewModels() {
   return changed;
 }
 
-/* اتصال هوشمند */
-async function smartConnect() {
-  const key = cleanKey($('smart-key').value);
+function showSmartErr(t) {
   const box = $('smart-result');
   box.className = 'test-result err'; box.classList.remove('hidden');
-  if (!key || key.length < 8) { box.textContent = 'اول کلید API رو بچسبون.'; return; }
+  box.textContent = '❌ ' + t;
   const btn = $('btn-smart');
-  btn.disabled = true; btn.textContent = '⏳';
-  box.className = 'test-result ok';
-  box.textContent = '⏳ در حال تشخیص…';
+  btn.disabled = false; btn.textContent = 'تشخیص';
+}
+/* ادامه اتصال هوشمند بعد از مشخص شدن ارائه‌دهنده: فقط همین یک سرویس صدا زده می‌شه */
+async function finishSmartConnect(pid, key, preProbed) {
+  const box = $('smart-result'), btn = $('btn-smart');
+  box.className = 'test-result ok'; box.classList.remove('hidden');
+  box.textContent = '⏳ در حال اتصال…';
   try {
-    let pid = null, preProbed = null;
-    for (const [re, id] of KEY_HINTS) if (re.test(key)) { pid = id; break; }
-    if (!pid) {
-      box.textContent = '⏳ پیشوند کلید ناشناسه؛ دارم با همه ارائه‌دهنده‌ها امتحانش می‌کنم…';
-      const order = ['openai', 'groq', 'gemini', 'cerebras', 'mistral', 'together', 'openrouter', 'deepseek', 'xai'];
-      const attempts = await Promise.allSettled(order.map(async (id) => {
-        const ids = await probeModels(id, PROVIDER_PRESETS[id].baseUrl, key);
-        if (ids && ids.length) return { id, ids };
-        throw new Error('empty');
-      }));
-      for (let i = 0; i < order.length; i++) {
-        if (attempts[i].status === 'fulfilled') { pid = attempts[i].value.id; preProbed = attempts[i].value.ids; break; }
-      }
-      if (!pid) {
-        box.className = 'test-result err';
-        box.textContent = '❌ این کلید با هیچ‌کدوم از ارائه‌دهنده‌ها جواب نداد. مطمئن شو کلید رو کامل کپی کردی؛ اگه باز نشد از تب‌های پایین دستی وارد کن.';
-        return;
-      }
-    }
     const p = settings.providers[pid];
     p.apiKey = key;
     settings.activeProvider = pid;
@@ -1030,6 +1292,51 @@ async function smartConnect() {
     fillProviderTabs(); fillSettingsForm(); renderAll();
     box.className = 'test-result ok';
     box.textContent = '✅ وصل شدی به ' + p.label + '!' + (chosen ? ' مدل پیشنهادی: ' + chosen : '') + (modelCount ? ' (' + modelCount + ' مدل پیدا شد)' : '');
+  } finally {
+    btn.disabled = false; btn.textContent = 'تشخیص';
+  }
+}
+/* اتصال هوشمند */
+async function smartConnect() {
+  const key = cleanKey($('smart-key').value);
+  const box = $('smart-result');
+  box.className = 'test-result err'; box.classList.remove('hidden');
+  if (!key || key.length < 8) { box.textContent = 'اول کلید API رو بچسبون.'; return; }
+  const btn = $('btn-smart');
+  btn.disabled = true; btn.textContent = '⏳';
+  box.className = 'test-result ok';
+  box.textContent = '⏳ در حال تشخیص…';
+  try {
+    let pid = null, preProbed = null;
+    for (const [re, id] of KEY_HINTS) if (re.test(key)) { pid = id; break; }
+    if (!pid) {
+      /* پیشوند ناشناس: به‌جای ارسال کلید به هر ۹ سرویس، از کاربر می‌پرسیم مال کدومه */
+      box.className = 'test-result';
+      box.innerHTML = '';
+      const t = document.createElement('div');
+      t.textContent = 'پیشوند این کلید رو نشناختم. برای اینکه کلیدت رو به سرویس‌های دیگه نفرستم، بگو مال کدوم ارائه‌دهنده‌ست:';
+      t.style.marginBottom = '8px';
+      box.appendChild(t);
+      const wrap = document.createElement('div');
+      wrap.style.display = 'flex'; wrap.style.flexWrap = 'wrap'; wrap.style.gap = '6px';
+      for (const id of PROVIDER_IDS) {
+        if (id === 'custom') continue;
+        const b = document.createElement('button');
+        b.className = 'btn-ghost small'; b.textContent = PROVIDER_PRESETS[id].label;
+        b.onclick = async () => {
+          box.className = 'test-result ok'; box.textContent = '⏳ در حال امتحان کلید با ' + PROVIDER_PRESETS[id].label + '…';
+          try {
+            const ids = await probeModels(id, PROVIDER_PRESETS[id].baseUrl, key);
+            if (ids && ids.length) { await finishSmartConnect(id, key, ids); }
+            else showSmartErr('این کلید با ' + PROVIDER_PRESETS[id].label + ' جواب نداد. یه ارائه‌دهنده دیگه رو امتحان کن یا از تب‌های پایین دستی وارد کن.');
+          } catch { showSmartErr('این کلید با ' + PROVIDER_PRESETS[id].label + ' جواب نداد. یه ارائه‌دهنده دیگه رو امتحان کن یا از تب‌های پایین دستی وارد کن.'); }
+        };
+        wrap.appendChild(b);
+      }
+      box.appendChild(wrap);
+      return;
+    }
+    await finishSmartConnect(pid, key, null);
   } finally {
     btn.disabled = false; btn.textContent = 'تشخیص';
   }
@@ -1060,6 +1367,14 @@ function openAdmin() {
 }
 function closeAdmin() { $('admin-modal').classList.add('hidden'); }
 
+/* رمز مدیر با PBKDF2 (۱۰۰هزار تکرار + نمک یکتا)؛ حساب‌های قدیمی موقع ورود مهاجرت می‌کنن */
+async function adminHash(pass, salt) {
+  const key = await crypto.subtle.importKey('raw', new TextEncoder().encode('aichat-admin::' + pass), 'PBKDF2', false, ['deriveBits']);
+  const bits = await crypto.subtle.deriveBits({ name: 'PBKDF2', salt: new TextEncoder().encode(salt), iterations: 100000, hash: 'SHA-256' }, key, 256);
+  return 'pbkdf2$' + [...new Uint8Array(bits)].map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+async function adminHashLegacy(pass) { return sha256('aichat-admin::' + pass); }
+
 function renderAdminAuth() {
   const box = $('admin-auth');
   if (isAdmin()) { box.innerHTML = ''; return; }
@@ -1080,7 +1395,9 @@ function renderAdminAuth() {
       if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { msg.className = 'test-result err'; msg.textContent = 'ایمیل معتبر نیست.'; return; }
       if (p1.length < 6) { msg.className = 'test-result err'; msg.textContent = 'رمز باید حداقل ۶ کاراکتر باشه.'; return; }
       if (p1 !== p2) { msg.className = 'test-result err'; msg.textContent = 'تکرار رمز با رمز یکی نیست.'; return; }
-      admin = { email, passHash: await sha256('aichat-admin::' + p1), createdAt: Date.now() };
+      admin = { email, salt: uid() + uid(), passHash: '', createdAt: Date.now() };
+      admin.passHash = await adminHash(p1, admin.salt);
+      saveAdmin();
       saveAdmin();
       sessionStorage.setItem('aichat.admin.session', '1');
       msg.className = 'test-result ok'; msg.textContent = '✅ حساب ساخته شد و وارد شدی!';
@@ -1099,8 +1416,14 @@ function renderAdminAuth() {
       const pass = $('adm-pass').value;
       const msg = $('adm-msg');
       msg.classList.remove('hidden');
-      const h = await sha256('aichat-admin::' + pass);
-      if (email === admin.email && h === admin.passHash) {
+      const h = admin.salt ? await adminHash(pass, admin.salt) : null;
+      const hOld = !admin.salt ? await adminHashLegacy(pass) : null;
+      if (email === admin.email && (h === admin.passHash || hOld === admin.passHash)) {
+        if (!admin.salt || !String(admin.passHash).startsWith('pbkdf2$')) {
+          admin.salt = uid() + uid();
+          admin.passHash = await adminHash(pass, admin.salt);
+          saveAdmin();
+        }
         sessionStorage.setItem('aichat.admin.session', '1');
         msg.className = 'test-result ok'; msg.textContent = '✅ خوش برگشتی!';
         setTimeout(() => { renderAdminAuth(); renderAdminPanel(); renderAll(); }, 600);
@@ -1238,9 +1561,10 @@ function renderAdminSecurity(c) {
     const cur = $('adm-cur-pass').value, nw = $('adm-new-pass').value;
     const msg = $('adm-sec-msg');
     msg.classList.remove('hidden');
-    if (await sha256('aichat-admin::' + cur) !== admin.passHash) { msg.className = 'test-result err'; msg.textContent = 'رمز فعلی اشتباهه.'; return; }
+    if (await adminHash(cur, admin.salt) !== admin.passHash) { msg.className = 'test-result err'; msg.textContent = 'رمز فعلی اشتباهه.'; return; }
     if (nw.length < 6) { msg.className = 'test-result err'; msg.textContent = 'رمز جدید باید حداقل ۶ کاراکتر باشه.'; return; }
-    admin.passHash = await sha256('aichat-admin::' + nw); saveAdmin();
+    if (!admin.salt) admin.salt = uid() + uid();
+    admin.passHash = await adminHash(nw, admin.salt); saveAdmin();
     msg.className = 'test-result ok'; msg.textContent = '✅ رمز تغییر کرد.';
     $('adm-cur-pass').value = ''; $('adm-new-pass').value = '';
   };
@@ -1262,7 +1586,8 @@ function renderAdminData(c) {
     '<button class="btn-danger" id="adm-wipe">پاک‌سازی کامل</button>' +
     '</div>' +
     '<div id="adm-data-msg" class="test-result hidden"></div>' +
-    '<p class="note">بکاپ شامل تنظیمات، گفتگوها و آمار می‌شه. حساب مدیر توی بکاپ نیست.</p>';
+    '<p class="note">بکاپ شامل تنظیمات، گفتگوها و آمار می‌شه. حساب مدیر توی بکاپ نیست.</p>' +
+    '<p class="note" style="color:#b3541e">⚠️ فایل بکاپ حاوی کلیدهای API شماست؛ با کسی به اشتراک نذار و جای امن نگهش دار.</p>';
   $('adm-export').onclick = () => {
     const data = { settings, convos, stats, exportedAt: Date.now() };
     const a = document.createElement('a');
@@ -1279,7 +1604,7 @@ function renderAdminData(c) {
       const msg = $('adm-data-msg');
       msg.classList.remove('hidden');
       try {
-        const d = JSON.parse(r.result);
+        const d = safeParseBackup(r.result);
         if (d.settings) settings = d.settings;
         if (d.convos) convos = d.convos;
         if (d.stats) stats = d.stats;
@@ -1412,7 +1737,7 @@ function renderAttachChips() {
 }
 /* پیام‌های API: متن + تصویر (vision) */
 function toApiMessages(c) {
-  return c.messages.map((m) => {
+  const msgs = c.messages.map((m) => {
     if (m.role === 'user' && m.attachments && m.attachments.length) {
       const parts = [{ type: 'text', text: m.content || '' }];
       for (const a of m.attachments) {
@@ -1423,6 +1748,24 @@ function toApiMessages(c) {
     }
     return { role: m.role, content: m.content };
   });
+  /* زمینه مشترک پروژه: دستورالعمل + فایل‌ها */
+  try {
+    const p = projectOfConvo(c.id);
+    if (p) {
+      const sys = projectContext(p);
+      if (sys) msgs.unshift({ role: 'system', content: sys });
+      const imgs = (p.files || []).filter((f) => f.kind === 'image' && f.dataUrl && f.dataUrl.indexOf('data:') === 0).slice(0, 4);
+      if (imgs.length) {
+        const fu = msgs.find((m) => m.role === 'user');
+        if (fu) {
+          const parts = typeof fu.content === 'string' ? [{ type: 'text', text: fu.content }] : fu.content.slice();
+          for (const im of imgs) parts.push({ type: 'image_url', image_url: { url: im.dataUrl } });
+          fu.content = parts;
+        }
+      }
+    }
+  } catch {}
+  return msgs;
 }
 /* ---------- ضبط صدا + رونویسی Whisper ---------- */
 let mediaRecorder = null, recordChunks = [], recordTimer = null, recordStart = 0;
