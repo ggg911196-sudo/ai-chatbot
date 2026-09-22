@@ -185,6 +185,32 @@ function providerModels(id) {
   const p = settings.providers[id];
   return (p.modelsList && p.modelsList.length ? p.modelsList : PROVIDER_PRESETS[id].models);
 }
+/* فقط مدل‌های واقعاً موجود (لیست دریافت‌شده) — بدون پیش‌فرض‌های ثابت */
+function availableModels(id) {
+  const p = settings.providers[id];
+  return (p.modelsList && p.modelsList.length) ? p.modelsList.slice() : [];
+}
+/* نام کوتاه نمایشی مدل */
+const MODEL_SHORT = {
+  'gemini-2.5-flash': 'Gemini 2.5 Flash', 'gemini-2.5-flash-lite': 'Gemini 2.5 Flash-Lite',
+  'gemini-2.5-pro': 'Gemini 2.5 Pro', 'gemini-2.0-flash': 'Gemini 2.0 Flash',
+  'gemini-2.0-flash-lite': 'Gemini 2.0 Flash-Lite',
+  'gpt-4o': 'GPT-4o', 'gpt-4o-mini': 'GPT-4o mini', 'gpt-4.1': 'GPT-4.1', 'gpt-4.1-mini': 'GPT-4.1 mini',
+  'llama-3.3-70b-versatile': 'Llama 3.3 70B', 'llama-3.1-8b-instant': 'Llama 3.1 8B',
+  'deepseek-chat': 'DeepSeek V3', 'deepseek-reasoner': 'DeepSeek R1',
+  'grok-3': 'Grok 3', 'grok-3-mini': 'Grok 3 Mini',
+  'mistral-small-latest': 'Mistral Small', 'mistral-medium-latest': 'Mistral Medium',
+  'llama-3.3-70b': 'Llama 3.3 70B',
+};
+function shortModelName(m) {
+  m = String(m || '');
+  if (MODEL_SHORT[m]) return MODEL_SHORT[m];
+  let s = m;
+  s = s.replace(/[-_](20\d{2}[-_]?\d{2}[-_]?\d{2}|\d{1,2}[-_]20\d{2}|\d{8}|\d{3,4})$/, '');
+  s = s.replace(/^[^/]+\//, '');
+  s = s.split(/[-_]/).map((w) => (/[0-9]/.test(w) ? w : w.charAt(0).toUpperCase() + w.slice(1))).join(' ');
+  return s.trim() || m;
+}
 function escapeHtml(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, (m) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m])); }
 
 /* ---------- elements ---------- */
@@ -453,7 +479,7 @@ function buildAssistantEl(m, idx, isLast) {
   const head = document.createElement('div');
   head.className = 'answer-head';
   head.innerHTML = '<span class="model-badge"><span class="dot"></span><span></span></span>';
-  head.querySelector('.model-badge span:last-child').textContent = plabel + (m.model ? ' · ' + m.model : '');
+  head.querySelector('.model-badge span:last-child').textContent = plabel + (m.model ? ' · ' + shortModelName(m.model) : '');
   const body = document.createElement('div');
   body.className = 'answer-body';
   body.innerHTML = renderMarkdown(m.content);
@@ -602,7 +628,7 @@ async function runAssistant(c) {
   const wrap = document.createElement('div');
   wrap.className = 'msg assistant';
   wrap.innerHTML = '<div class="answer-head"><span class="model-badge"><span class="dot"></span><span></span></span></div><div class="answer-body"><span class="cursor"></span></div>';
-  wrap.querySelector('.model-badge span:last-child').textContent = cfg.label + (cfg.model ? ' · ' + cfg.model : '');
+  wrap.querySelector('.model-badge span:last-child').textContent = cfg.label + (cfg.model ? ' · ' + shortModelName(cfg.model) : '');
   welcomeEl.classList.add('hidden');
   messagesEl.appendChild(wrap);
   messagesEl.scrollTop = messagesEl.scrollHeight;
@@ -676,7 +702,8 @@ function renderMsLabel() {
   b.textContent = p.label;
   const s = document.createElement('span');
   s.className = 'mname';
-  s.textContent = p.model ? ' · ' + p.model : '';
+  s.textContent = p.model ? ' · ' + shortModelName(p.model) : '';
+  s.title = p.model || '';
   s.dir = 'ltr';
   $('ms-label').appendChild(b);
   $('ms-label').appendChild(s);
@@ -696,18 +723,19 @@ function openModelMenu() {
     ht.textContent = p.label;
     h.appendChild(ht);
     g.appendChild(h);
-    const models = providerModels(id);
+    const models = availableModels(id);
     if (!models.length) {
       const s = document.createElement('div');
       s.className = 'mm-empty';
-      s.textContent = 'مدلی ثبت نشده';
+      s.textContent = 'لیست مدل‌ها دریافت نشده — از تنظیمات «دریافت لیست مدل‌ها» رو بزن';
       g.appendChild(s);
     }
     for (const m of models.slice(0, 30)) {
       const btn = document.createElement('button');
       btn.className = 'mm-model' + (settings.activeProvider === id && p.model === m ? ' sel' : '');
       btn.dir = 'ltr';
-      btn.textContent = m;
+      btn.textContent = shortModelName(m);
+      btn.title = m;
       btn.onclick = () => selectModel(id, m);
       g.appendChild(btn);
     }
