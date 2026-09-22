@@ -214,7 +214,7 @@ function escapeHtml(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, (
 
 /* ---------- elements ---------- */
 /* LotUS AI Chat — v6.14 */
-const APP_VERSION = '6.17';
+const APP_VERSION = '6.18';
 const $ = (id) => document.getElementById(id);
 const messagesEl = $('messages'), welcomeEl = $('welcome'), inputEl = $('input');
 const errorBar = $('error-bar');
@@ -272,7 +272,21 @@ function groupLabel(ts) {
   return 'قدیمی‌تر';
 }
 
+/* آواتار کاربر در پایین دراور (مثل اپ) */
+function renderUserAvatar() {
+  const av = $('user-avatar');
+  if (!av) return;
+  if (isAdmin() && admin && admin.email) {
+    const local = String(admin.email).split('@')[0].replace(/[^a-zA-Z\u0600-\u06FF0-9]/g, '').slice(0, 2);
+    av.textContent = local || 'م';
+    av.title = 'مدیر: ' + admin.email;
+  } else {
+    av.textContent = '✦';
+    av.title = 'کاربر مهمان';
+  }
+}
 function renderSidebar() {
+  renderUserAvatar();
   const list = $('convo-list');
   list.innerHTML = '';
   let items = convos;
@@ -2478,6 +2492,7 @@ function autoresize() {
 
 $('btn-new-chat').onclick = newConvo;
 $('btn-new-chat-top').onclick = newConvo;
+$('user-avatar').onclick = () => { if (isAdmin()) openAdmin(); else openSettings(); };
 $('btn-toggle-sidebar').onclick = () => {
   if (window.matchMedia('(max-width:860px)').matches) document.body.classList.toggle('sidebar-open');
   else document.body.classList.toggle('sidebar-hidden');

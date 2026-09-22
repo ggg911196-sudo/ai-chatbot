@@ -738,6 +738,40 @@ html[data-theme="chatgpt"] .record-bar{background:#fff}
 .btn-send .ic-arrow{width:21px;height:21px;display:none}
 .composer.has-text .btn-send .ic-arrow{display:block}
 .composer.has-text .btn-send .ic-voice{display:none}
+
+/* ===== v6.18: پوسته‌ی اپ ChatGPT (تم پیش‌فرض) — مطابق اسکرین‌شات‌های اپ ===== */
+/* هدر: سوییچر مدل به‌صورت پیل آبی روشن «Get Plus» و چسبیده به منو */
+html[data-theme="chatgpt"] .switcher-wrap{flex:0 1 auto;margin:0}
+html[data-theme="chatgpt"] .model-switcher{
+  background:rgba(43,127,255,.08);border-color:rgba(43,127,255,.16);color:#1a73e8;
+  padding:8px 15px;font-weight:700;
+}
+html[data-theme="chatgpt"] .model-switcher:hover{background:rgba(43,127,255,.14);border-color:rgba(43,127,255,.25)}
+html[data-theme="chatgpt"] .model-switcher::before{content:'✦';font-size:13px;margin-inline-end:2px}
+html[data-theme="chatgpt"] .model-switcher .chev{display:none}
+html[data-theme="chatgpt"] #ms-label .mname{color:rgba(26,115,232,.72)}
+html[data-theme="chatgpt"] #ms-label .p-logo{background:rgba(255,255,255,.9)}
+/* صفحه‌ی خوش‌آمد: سلام بالا، ردیف‌های پیشنهاد پایین و راست‌چین (مثل صفحه‌ی اصلی اپ) */
+html[data-theme="chatgpt"] #messages:empty{flex:0 0 auto;height:0;padding:0;overflow:hidden}
+html[data-theme="chatgpt"] .welcome{flex:1;display:flex;flex-direction:column;margin:0;max-width:780px;text-align:center}
+html[data-theme="chatgpt"] .welcome h2{margin-top:16vh;font-size:25px}
+html[data-theme="chatgpt"] .welcome-sub{margin-bottom:0}
+html[data-theme="chatgpt"] .welcome-providers{margin-top:auto;margin-bottom:2px}
+html[data-theme="chatgpt"] .suggest-rows{margin-top:6px}
+html[data-theme="chatgpt"] .suggest-row{justify-content:flex-start;text-align:start;padding:12px 12px}
+html[data-theme="chatgpt"] .suggest-row .ic{color:var(--muted)}
+/* پایین دراور: دکمه‌ی آبی + دایره‌ی آواتار (مثل اپ) */
+.foot-row{display:flex;align-items:center;gap:10px}
+.foot-row .btn-new-chat{flex:1}
+.user-avatar{
+  width:42px;height:42px;border-radius:50%;flex:none;cursor:pointer;
+  background:var(--surface2);border:1px solid var(--border);color:var(--text);
+  display:flex;align-items:center;justify-content:center;font-weight:800;font-size:15px;font-family:inherit;
+  transition:transform .15s,background .15s;
+}
+.user-avatar:hover{transform:scale(1.06)}
+html[data-theme="chatgpt"] .user-avatar{background:#e9e9e9;border-color:transparent;color:#333}
+html[data-theme="chatgpt"] .drawer-foot .provider-chip{justify-content:flex-start}
 .btn-send{transform:none}
 .btn-send:hover{transform:scale(1.08)}
 html[data-theme="chatgpt"] .icon-btn.big{color:#0f0f0f}
