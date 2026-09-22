@@ -262,7 +262,7 @@ function renderSidebar() {
     const groups = {};
     for (const c of items) { if (c.pinned) continue; const g = groupLabel(c.updatedAt); (groups[g] = groups[g] || []).push(c); }
     const gl2 = document.createElement('div');
-    gl2.className = 'group-label'; gl2.textContent = 'گفتگوهای اخیر';
+    gl2.className = 'group-label'; gl2.textContent = 'اخیر';
     list.appendChild(gl2);
     for (const g of ['امروز', 'دیروز', '۷ روز گذشته', 'قدیمی‌تر']) {
       if (!groups[g]) continue;
@@ -323,6 +323,64 @@ function startRename(id, itemEl) {
   inp.onclick = (e) => e.stopPropagation();
   inp.onkeydown = (e) => { e.stopPropagation(); if (e.key === 'Enter') finish(true); if (e.key === 'Escape') finish(false); };
   inp.onblur = () => finish(true);
+}
+
+/* ---------- قابلیت‌های دراور (v6.7) ---------- */
+const FEATURES = {
+  images:    { title: 'تصاویر',        icon: 'image',  desc: 'همه عکس‌ها و فریم‌های ویدیویی که توی گفتگوها فرستادی، اینجا جمع می‌شن.' },
+  library:   { title: 'کتابخانه',      icon: 'book',   desc: 'متن‌ها، کدها و پاسخ‌های مهمی که ذخیره می‌کنی، اینجا نگه داشته می‌شن.' },
+  projects:  { title: 'پروژه‌ها',      icon: 'folder', desc: 'گفتگوهای مرتبط رو توی یه پروژه گروه کن تا همیشه منظم و در دسترس بمونن.' },
+  scheduled: { title: 'زمان‌بندی‌شده', icon: 'clock',  desc: 'پیام‌های زمان‌بندی‌شده؛ مثلاً هر صبح یه خلاصه خبری یا یادآوری بگیر.' },
+  plugins:   { title: 'افزونه‌ها',     icon: 'plug',   desc: 'افزونه‌ها قابلیت‌های تازه به چت‌بات اضافه می‌کنن؛ مثل جستجوی وب یا اجرای کد.' },
+};
+function openFeature(id) {
+  const f = FEATURES[id];
+  if (!f) return;
+  $('feature-title').textContent = f.title;
+  const body = $('feature-body');
+  body.innerHTML = '<p class="feature-desc"></p><div class="feature-content"></div>';
+  body.querySelector('.feature-desc').textContent = f.desc;
+  const content = body.querySelector('.feature-content');
+  if (id === 'images') renderImageGallery(content);
+  else {
+    content.innerHTML = '<div class="feature-empty">' + icon(f.icon) + 'هنوز چیزی اینجا نیست.<br>به‌زودی فعال می‌شه.</div>';
+  }
+  $('feature-modal').classList.remove('hidden');
+  document.body.classList.remove('sidebar-open');
+}
+function closeFeature() { $('feature-modal').classList.add('hidden'); }
+function renderImageGallery(content) {
+  const shots = [];
+  for (const c of convos) {
+    for (const m of (c.messages || [])) {
+      for (const a of (m.attachments || [])) {
+        const src = a.dataUrl || a.frameUrl;
+        if ((a.kind === 'image' || a.kind === 'video') && src) shots.push({ src, cap: c.title });
+      }
+    }
+  }
+  if (!shots.length) {
+    content.innerHTML = '<div class="feature-empty">' + icon('image') + 'هنوز عکسی نفرستادی.<br>از دکمه پیوست، عکس بفرست تا اینجا نمایش داده بشه.</div>';
+    return;
+  }
+  const grid = document.createElement('div');
+  grid.className = 'img-grid';
+  for (const s of shots.slice(-60).reverse()) {
+    const d = document.createElement('div');
+    d.className = 'g-item';
+    const img = document.createElement('img');
+    img.src = s.src; img.alt = s.cap; img.loading = 'lazy';
+    const cap = document.createElement('div');
+    cap.className = 'g-cap'; cap.textContent = s.cap;
+    d.appendChild(img); d.appendChild(cap);
+    d.onclick = () => window.open(s.src, '_blank');
+    grid.appendChild(d);
+  }
+  content.appendChild(grid);
+  const note = document.createElement('div');
+  note.className = 'feature-note';
+  note.textContent = 'تصاویر فقط در همین نشست نگه داشته می‌شن (برای سبک موندن حافظه ذخیره نمی‌شن).';
+  content.appendChild(note);
 }
 
 /* ---------- chat rendering ---------- */
@@ -1422,6 +1480,9 @@ messagesEl.addEventListener('click', (e) => {
 
 $('btn-settings').onclick = openSettings;
 $('btn-close-settings').onclick = closeSettings;
+$('btn-close-feature').onclick = closeFeature;
+$('feature-modal').addEventListener('click', (e) => { if (e.target === $('feature-modal')) closeFeature(); });
+document.querySelectorAll('.feature-btn').forEach((b) => { b.onclick = () => openFeature(b.dataset.feature); });
 $('settings-modal').addEventListener('click', (e) => { if (e.target === $('settings-modal')) closeSettings(); });
 $('btn-test').onclick = testConnection;
 $('btn-fetch-models').onclick = fetchModels;
@@ -1434,7 +1495,7 @@ $('btn-admin').onclick = openAdmin;
 $('btn-close-admin').onclick = closeAdmin;
 $('admin-modal').addEventListener('click', (e) => { if (e.target === $('admin-modal')) closeAdmin(); });
 document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') { closeSettings(); closeAdmin(); closeModelMenu(); }
+  if (e.key === 'Escape') { closeSettings(); closeAdmin(); closeModelMenu(); closeFeature(); }
 });
 
 /* ---------- init ---------- */

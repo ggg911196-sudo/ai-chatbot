@@ -737,3 +737,16 @@ html[data-theme="chatgpt"] .record-bar{background:#fff}
 html[data-theme="chatgpt"] .icon-btn.big{color:#0f0f0f}
 html[data-theme="chatgpt"] .icon-btn.big:hover{background:rgba(0,0,0,.06);color:#0f0f0f}
 html[data-theme="chatgpt"] .btn-mic.listening{color:#2b7fff}
+
+/* v6.7: قابلیت‌های دراور به سبک ChatGPT */
+.features-nav{padding-top:4px}
+.settings-nav{border-bottom:none;border-top:1px solid var(--border-soft);padding-top:10px;padding-bottom:10px}
+.feature-body{min-height:180px;max-height:70vh;overflow-y:auto}
+.feature-desc{color:var(--muted);font-size:13.5px;line-height:2.1;margin:0 0 14px}
+.feature-empty{text-align:center;color:var(--muted2);padding:30px 12px;line-height:2.2;font-size:13.5px}
+.feature-empty .ic{width:46px;height:46px;stroke-width:1.3;opacity:.55;display:block;margin:0 auto 10px}
+.feature-note{font-size:12px;color:var(--muted2);text-align:center;margin-top:16px;line-height:2}
+.img-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.img-grid .g-item{border-radius:12px;overflow:hidden;background:var(--surface);cursor:zoom-in;aspect-ratio:1;position:relative;border:1px solid var(--border-soft)}
+.img-grid .g-item img{width:100%;height:100%;object-fit:cover;display:block}
+.img-grid .g-cap{position:absolute;bottom:0;right:0;left:0;font-size:10.5px;color:#fff;background:linear-gradient(transparent,rgba(0,0,0,.65));padding:14px 8px 6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
