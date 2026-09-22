@@ -44,26 +44,25 @@ const FOLLOWUPS = ['بیشتر توضیح بده', 'یه مثال عملی بز�
 /* تمیزکاری کلید: حذف کاراکترهای نامرئی (نیم‌فاصله، علامت جهت و…) که موقع کپی از متن فارسی ممکنه به اول/آخر کلید بچسبن و تشخیص رو خراب کنن */
 function cleanKey(k) { return (k || '').replace(/[\u200b-\u200f\u202a-\u202e\u2066-\u2069\ufeff]/g, '').trim(); }
 
-/* ظاهر هر ارائه‌دهنده: لوگوی واقعی + گرادیان اختصاصی */
+/* ظاهر هر ارائه‌دهنده: لوگوی دقیق برند + رنگ سازمانی */
 const PROVIDER_LOOK = {
-  openai:     { icon: 'openai',       g: ['#111111', '#3d3d3d'], letter: 'AI' },
-  gemini:     { icon: 'googlegemini', g: ['#1a73e8', '#9b72f2'], letter: 'G'  },
-  groq:       { icon: null,           g: ['#f55036', '#8f1d12'], letter: 'G'  },
-  cerebras:   { icon: null,           g: ['#e11d48', '#7f1d1d'], letter: 'C'  },
-  mistral:    { icon: 'mistralai',    g: ['#ff7000', '#c22e00'], letter: 'M'  },
-  together:   { icon: null,           g: ['#0f62fe', '#003a9e'], letter: 'T'  },
-  openrouter: { icon: 'openrouter',   g: ['#0ea5e9', '#4f46e5'], letter: 'OR' },
-  deepseek:   { icon: 'deepseek',     g: ['#4d6bfe', '#1e2f8f'], letter: 'DS' },
-  xai:        { icon: 'x',            g: ['#000000', '#3f3f46'], letter: '𝕏'  },
-  custom:     { icon: null,           g: ['#6b7280', '#374151'], letter: '✎'  },
+  openai:     { icon: 'openai',       brand: '#000000', letter: 'AI' },
+  gemini:     { icon: 'googlegemini', brand: '#1a73e8', letter: 'G'  },
+  groq:       { icon: 'groq',         brand: '#f55036', letter: 'G'  },
+  cerebras:   { icon: null,           brand: '#e11d48', letter: 'C'  },
+  mistral:    { icon: 'mistralai',    brand: '#ff7000', letter: 'M'  },
+  together:   { icon: null,           brand: '#0f62fe', letter: 'T'  },
+  openrouter: { icon: 'openrouter',   brand: '#4f46e5', letter: 'OR' },
+  deepseek:   { icon: 'deepseek',     brand: '#4d6bfe', letter: 'DS' },
+  xai:        { icon: 'x',            brand: '#000000', letter: '𝕏'  },
+  custom:     { icon: null,           brand: '#6b7280', letter: '✎'  },
 };
 function providerLogo(id) {
   const L = PROVIDER_LOOK[id] || PROVIDER_LOOK.custom;
   const s = document.createElement('span');
   s.className = 'p-logo';
-  s.style.background = 'linear-gradient(135deg,' + L.g[0] + ',' + L.g[1] + ')';
   s.title = (PROVIDER_PRESETS[id] || {}).label || id;
-  const putLetter = () => { const i = document.createElement('i'); i.textContent = L.letter; s.appendChild(i); };
+  const putLetter = () => { const i = document.createElement('i'); i.textContent = L.letter; i.style.color = L.brand; s.appendChild(i); };
   if (L.icon) {
     const img = document.createElement('img');
     img.src = 'https://cdn.jsdelivr.net/npm/simple-icons/icons/' + L.icon + '.svg';
@@ -215,7 +214,7 @@ function escapeHtml(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, (
 
 /* ---------- elements ---------- */
 /* LotUS AI Chat — v6.14 */
-const APP_VERSION = '6.14';
+const APP_VERSION = '6.15';
 const $ = (id) => document.getElementById(id);
 const messagesEl = $('messages'), welcomeEl = $('welcome'), inputEl = $('input');
 const errorBar = $('error-bar');
@@ -891,8 +890,15 @@ function renderSuggestions() {
   }
   const wp = $('welcome-providers');
   wp.innerHTML = '';
-  for (const id of visibleProviders()) {
-    if (id === 'custom') continue;
+  /* فقط سرویس‌هایی که بهشون وصلی (کلید دارن) */
+  const connected = visibleProviders().filter((id) => id !== 'custom' && (settings.providers[id].apiKey || '').trim());
+  if (!connected.length) {
+    const s = document.createElement('span');
+    s.className = 'wp-hint';
+    s.textContent = 'هنوز به هیچ سرویسی وصل نیستی — از تنظیمات «اتصال هوشمند» کلید API رو وارد کن.';
+    wp.appendChild(s);
+  }
+  for (const id of connected) {
     const s = document.createElement('span');
     s.className = 'wp-chip';
     s.appendChild(providerLogo(id));
@@ -1153,6 +1159,12 @@ function fillProviderTabs() {
     const t = document.createElement('span');
     t.textContent = settings.providers[id].label;
     b.appendChild(t);
+    if ((settings.providers[id].apiKey || '').trim()) {
+      const d = document.createElement('span');
+      d.className = 'p-conn';
+      d.title = 'متصل';
+      b.appendChild(d);
+    }
     if (id === editingProvider) b.classList.add('active');
     b.onclick = () => { editingProvider = id; fillProviderTabs(); fillSettingsForm(); };
     tabs.appendChild(b);

@@ -481,11 +481,12 @@ button{font-family:inherit}
 .p-logo{
   width:26px;height:26px;min-width:26px;border-radius:8px;
   display:inline-grid;place-items:center;overflow:hidden;flex-shrink:0;
-  box-shadow:0 2px 10px rgba(0,0,0,.35),inset 0 1px 0 rgba(255,255,255,.18);
+  background:#fff;border:1px solid rgba(0,0,0,.09);
+  box-shadow:0 1px 4px rgba(0,0,0,.14);
   animation:logoIn .3s ease;
 }
-.p-logo i{font-style:normal;font-size:11px;font-weight:800;color:#fff;line-height:1;letter-spacing:-.5px}
-.p-logo img{width:62%;height:62%;filter:brightness(0) invert(1)}
+.p-logo i{font-style:normal;font-size:11px;font-weight:800;line-height:1;letter-spacing:-.5px}
+.p-logo img{width:64%;height:64%;display:block}
 #ms-label .p-logo{width:22px;height:22px;min-width:22px;border-radius:7px}
 #ms-label{display:inline-flex;align-items:center;gap:7px}
 .provider-chip .p-logo{width:20px;height:20px;min-width:20px;border-radius:6px}
@@ -525,6 +526,11 @@ button{font-family:inherit}
 /* چیپ‌های ارائه‌دهنده در خوش‌آمد با لوگو */
 .wp-chip{display:inline-flex;align-items:center;gap:7px}
 .wp-chip .p-logo{width:20px;height:20px;min-width:20px;border-radius:6px}
+.wp-hint{font-size:12px;color:var(--muted);line-height:1.9}
+/* نقطه سبز «متصل» روی تب‌های تنظیمات */
+.provider-tabs button.ptab{position:relative}
+.p-conn{position:absolute;top:7px;inset-inline-end:7px;width:8px;height:8px;border-radius:50%;
+  background:#22c55e;box-shadow:0 0 0 2px var(--surface2)}
 
 @media (prefers-reduced-motion:reduce){
   *,*::before,*::after{animation:none!important;transition:none!important}
