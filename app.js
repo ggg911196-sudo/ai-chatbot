@@ -761,7 +761,10 @@ async function runAssistant(c) {
       renderChat();
     } else {
       wrap.remove();
-      showError('⚠️ ' + (e.message || 'خطایی رخ داد. اتصال اینترنت و کلید API رو بررسی کن.'));
+      let emsg = e.message || 'خطایی رخ داد. اتصال اینترنت و کلید API رو بررسی کن.';
+      if (/خطای 403/.test(emsg)) emsg += ' (احتمالاً مدل انتخاب‌شده با کلیدت در دسترس نیست؛ از منوی مدل یه مدل پایدار انتخاب کن)';
+      if (/خطای 404/.test(emsg)) emsg += ' (این مدل پیدا نشد؛ از تنظیمات «دریافت لیست مدل‌ها» رو بزن و یه مدل موجود انتخاب کن)';
+      showError('⚠️ ' + emsg);
     }
   } finally {
     aborter = null;
@@ -961,6 +964,19 @@ function pickSuggestedModel(pid, ids) {
   if (preset && ids.includes(preset) && !isPreviewModel(preset)) return preset;
   const stable = ids.filter((m) => !isPreviewModel(m));
   return stable.find((m) => /flash|mini|small|lite|pro|chat|instruct/i.test(m)) || stable[0] || ids[0];
+}
+/* مهاجرت خودکار: اگه مدل ذخیره‌شده آزمایشی/محدود باشه، با یه مدل پایدار جایگزین می‌شه */
+function migratePreviewModels() {
+  let changed = false;
+  for (const id of PROVIDER_IDS) {
+    const p = settings.providers[id];
+    if (!p || !p.model || !isPreviewModel(p.model)) continue;
+    const better = pickSuggestedModel(id, (p.modelsList && p.modelsList.length) ? p.modelsList : null)
+      || (PROVIDER_PRESETS[id] && PROVIDER_PRESETS[id].models[0]) || '';
+    if (better && better !== p.model && !isPreviewModel(better)) { p.model = better; changed = true; }
+  }
+  if (changed) saveSettings();
+  return changed;
 }
 
 /* اتصال هوشمند */
@@ -1661,5 +1677,6 @@ document.addEventListener('click', (e) => {
   if (pop && !pop.classList.contains('hidden') && !e.target.closest('.theme-wrap')) pop.classList.add('hidden');
 });
 if (!visibleProviders().includes(settings.activeProvider)) settings.activeProvider = 'openai';
+migratePreviewModels();
 renderAll();
 autoresize();
